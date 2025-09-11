@@ -1,0 +1,25 @@
+/* Archivo: client/src/App.css */
+.App {
+  text-align: center;
+  background-color: #282c34;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(10px + 2vmin);
+  color: white;
+}
+
+.player-wrapper {
+  position: relative;
+  width: 80%;
+  max-width: 900px;
+  padding-top: 45%; /* Proporción 16:9 para el video */
+}
+
+.react-player {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
