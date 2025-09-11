@@ -3,7 +3,7 @@ import io from 'socket.io-client';
 import './App.css';
 
 // Conectamos con nuestro servidor
-const socket = io.connect("http://localhost:3001");
+const socket = io.connect("[https://modixia-watch-party-server.onrender.com](https://modixia-watch-party-server.onrender.com)"); // <-- Pega tu URL de Render
 
 function App() {
   const [roomId, setRoomId] = useState('mi-sala-secreta');
