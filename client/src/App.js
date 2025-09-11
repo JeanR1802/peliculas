@@ -38,7 +38,7 @@ const AppStyles = () => (
     .App {
       display: flex;
       flex-direction: column;
-      height: 100vh;
+      /* La altura ahora es controlada por JS para evitar bugs en móviles */
       width: 100vw;
       background-color: var(--bg-color);
     }
@@ -253,7 +253,7 @@ function App() {
   const [username, setUsername] = useState('');
   const [isInRoom, setIsInRoom] = useState(false);
   const [copyButtonText, setCopyButtonText] = useState('Copiar Enlace');
-  const [, setIsFullscreen] = useState(false); // **NUEVO**: Estado para forzar re-render
+  const [appHeight, setAppHeight] = useState('100vh'); // **NUEVO**: Estado para la altura de la app
 
   // Estados para los inputs del modal
   const [inputRoomId, setInputRoomId] = useState('');
@@ -276,19 +276,25 @@ function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // **NUEVO**: Efecto para manejar el cambio a pantalla completa
+  // **NUEVO Y MEJORADO**: Efecto para manejar el layout y la pantalla completa
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      // Simplemente actualizamos un estado para forzar a React a re-renderizar.
-      // Esto ayuda al navegador a recalcular el layout correctamente.
-      setIsFullscreen(!!document.fullscreenElement);
+    const handleResize = () => {
+      // Usamos window.innerHeight para obtener la altura real de la ventana visible
+      // y la guardamos como un string con 'px' para usarla en el estilo.
+      setAppHeight(`${window.innerHeight}px`);
     };
 
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    // Escuchamos cambios de tamaño y de estado de pantalla completa
+    window.addEventListener('resize', handleResize);
+    document.addEventListener('fullscreenchange', handleResize);
 
-    // Limpieza del listener
+    // Establecemos la altura inicial
+    handleResize();
+
+    // Limpieza de listeners
     return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      window.removeEventListener('resize', handleResize);
+      document.removeEventListener('fullscreenchange', handleResize);
     };
   }, []);
 
@@ -444,7 +450,7 @@ function App() {
   return (
     <>
       <AppStyles />
-      <div className="App">
+      <div className="App" style={{ height: appHeight }}> {/* **AQUÍ SE APLICA LA ALTURA DINÁMICA** */}
         <div className="video-section">
           <div className="header-and-input">
             <div className="header-section">
