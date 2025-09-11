@@ -102,6 +102,7 @@ const AppStyles = () => (
       padding: 15px;
       box-sizing: border-box;
       border-right: 1px solid var(--border-color);
+      min-width: 0; /* Corrección para flexbox */
     }
 
     .chat-messages {
@@ -111,6 +112,7 @@ const AppStyles = () => (
       padding-right: 10px;
       display: flex;
       flex-direction: column;
+      min-height: 0; /* **CORRECCIÓN**: Evita que el contenedor crezca con mensajes largos */
     }
 
     /* Estilos de la barra de scroll */
@@ -135,6 +137,8 @@ const AppStyles = () => (
       font-size: 0.9em;
       background: none;
       align-self: center;
+      max-width: 90%; /* **CORRECCIÓN**: Permite que los mensajes del sistema sean más anchos */
+      word-break: break-all; /* **CORRECCIÓN**: Fuerza el corte de URLs largas para que no desborden */
     }
     .chat-message.me {
       background-color: var(--primary-accent);
