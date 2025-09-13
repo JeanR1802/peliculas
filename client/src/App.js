@@ -5,16 +5,7 @@ import io from 'socket.io-client';
 // const socket = io.connect("http://localhost:3001"); // Para desarrollo local
 const socket = io.connect("https://modixia-watch-party-server.onrender.com"); // ¡Cambia esta URL por la de tu servidor en Render!
 
-// **NUEVO**: Definimos las salas en el cliente para mostrarlas en el lobby
-const PREDEFINED_ROOMS = [
-  { id: 'sala-1', name: 'Sala 1', movie: 'Manos de Tijera' },
-  { id: 'sala-2', name: 'Sala 2', movie: 'Big Buck Bunny' },
-  { id: 'sala-3', name: 'Sala 3', movie: '(Próximamente)' },
-  { id: 'sala-4', name: 'Sala 4', movie: '(Próximamente)' },
-  { id: 'sala-5', name: 'Sala 5', movie: '(Próximamente)' },
-];
-
-// --- Estilos CSS (con añadidos para el lobby) ---
+// --- Estilos CSS (con añadidos para el panel de admin) ---
 const AppStyles = () => (
   <style>{`
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
@@ -22,7 +13,7 @@ const AppStyles = () => (
       --bg-color: #1a1d24; --card-bg-color: #22272e; --text-color: #e0e0e0;
       --secondary-text-color: #8b949e; --primary-accent: #3392ff; --primary-accent-hover: #58a6ff;
       --border-color: #30363d; --chat-bg: #2d333b; --system-message-color: #79c0ff;
-      --success-color: #28a745;
+      --success-color: #28a745; --danger-color: #da3633;
     }
     body {
       margin: 0; font-family: 'Poppins', sans-serif; -webkit-font-smoothing: antialiased;
@@ -104,25 +95,30 @@ const AppStyles = () => (
     button:disabled { background-color: var(--border-color); cursor: not-allowed; transform: none; }
     .control-buttons { display: flex; gap: 10px; margin-top: auto; }
     .copy-btn.copied { background-color: var(--success-color); }
-    .join-modal-overlay {
+    .modal-overlay {
         position: fixed; top: 0; left: 0; right: 0; bottom: 0;
         background: rgba(0, 0, 0, 0.7); display: flex; justify-content: center;
         align-items: center; z-index: 1000; backdrop-filter: blur(5px);
     }
-    .join-modal {
-        background-color: var(--card-bg-color); padding: 40px; border-radius: 12px;
+    .modal-content {
+        background-color: var(--card-bg-color); padding: 30px; border-radius: 12px;
         box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6); text-align: center;
         width: 90%; max-width: 450px; animation: fadeIn 0.3s ease-out;
     }
-    .join-modal h2 { color: var(--text-color); margin-bottom: 10px; font-size: 2.2rem; }
-    .join-modal p { color: var(--secondary-text-color); margin-bottom: 30px; }
-    .join-modal-inputs { display: flex; flex-direction: column; gap: 15px; margin-bottom: 30px; }
-    /* **NUEVOS ESTILOS PARA EL LOBBY** */
+    .modal-content h2 { color: var(--text-color); margin-bottom: 10px; font-size: 2rem; }
+    .modal-content p { color: var(--secondary-text-color); margin-bottom: 25px; }
+    .modal-inputs { display: flex; flex-direction: column; gap: 15px; margin-bottom: 25px; }
     .lobby-container {
         display: flex; flex-direction: column; align-items: center; justify-content: center;
         width: 100%; height: 100vh; padding: 20px; box-sizing: border-box;
     }
-    .lobby-header { text-align: center; margin-bottom: 40px; }
+    .lobby-header { text-align: center; margin-bottom: 40px; position: relative; width: 100%; max-width: 1000px; }
+    .admin-button {
+      position: absolute; top: 0; right: 0; background: none; border: none;
+      cursor: pointer; padding: 10px;
+    }
+    .admin-button svg { width: 24px; height: 24px; fill: var(--secondary-text-color); transition: fill 0.2s ease; }
+    .admin-button:hover svg { fill: var(--primary-accent); }
     .room-selection-container {
         display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         gap: 20px; width: 100%; max-width: 1000px;
@@ -135,6 +131,9 @@ const AppStyles = () => (
     .room-card:hover { transform: translateY(-5px); border-color: var(--primary-accent); }
     .room-card h3 { margin: 0 0 10px 0; color: var(--primary-accent); }
     .room-card p { margin: 0; color: var(--secondary-text-color); }
+    .modal-inputs label { font-size: 0.9rem; text-align: left; color: var(--secondary-text-color); }
+    .modal-inputs select { width: 100%; }
+    .admin-error-message { color: var(--danger-color); margin-top: 15px; min-height: 20px; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
     @media (max-width: 768px) {
         .user-list-section { display: none; } .chat-section { border-right: none; }
@@ -144,18 +143,27 @@ const AppStyles = () => (
 );
 
 function App() {
+  const [predefinedRooms, setPredefinedRooms] = useState({});
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [username, setUsername] = useState('');
   const [isInRoom, setIsInRoom] = useState(false);
   const [inputUsername, setInputUsername] = useState('');
   
   const [videoUrl, setVideoUrl] = useState('');
-  const [inputUrl, setInputUrl] = useState('');
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [usersInRoom, setUsersInRoom] = useState([]);
   const [copyButtonText, setCopyButtonText] = useState('Copiar Enlace');
   const [appHeight, setAppHeight] = useState('100vh');
+  
+  // Estados para el panel de admin
+  const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+  const [adminSelectedRoomId, setAdminSelectedRoomId] = useState('sala-1');
+  const [adminNewName, setAdminNewName] = useState('');
+  const [adminNewMovie, setAdminNewMovie] = useState('');
+  const [adminNewUrl, setAdminNewUrl] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminError, setAdminError] = useState('');
   
   const playerRef = useRef(null);
   const isSocketAction = useRef(false);
@@ -175,31 +183,34 @@ function App() {
   }, []);
 
   useEffect(() => {
+    // Escuchar la lista de salas inicial del servidor
+    socket.on('initial-lobby-data', (rooms) => setPredefinedRooms(rooms));
+    // Escuchar actualizaciones del lobby
+    socket.on('update-lobby-data', (rooms) => setPredefinedRooms(rooms));
+    // Escuchar errores de admin
+    socket.on('admin-error', (errorMessage) => setAdminError(errorMessage));
+    
+    return () => {
+      socket.off('initial-lobby-data');
+      socket.off('update-lobby-data');
+      socket.off('admin-error');
+    };
+  }, []);
+
+  useEffect(() => {
     if (!isInRoom) return;
 
     socket.emit('join-room', { roomId: selectedRoom.id, username });
-
     const pingInterval = setInterval(() => socket.emit('ping'), 5 * 60 * 1000);
 
     const handleReceivePlay = (currentTime) => {
-      if (playerRef.current && playerRef.current.paused) {
-        isSocketAction.current = true;
-        playerRef.current.currentTime = currentTime;
-        playerRef.current.play();
-      }
+      if (playerRef.current && playerRef.current.paused) { isSocketAction.current = true; playerRef.current.currentTime = currentTime; playerRef.current.play(); }
     };
     const handleReceivePause = (currentTime) => {
-      if (playerRef.current && !playerRef.current.paused) {
-        isSocketAction.current = true;
-        playerRef.current.currentTime = currentTime;
-        playerRef.current.pause();
-      }
+      if (playerRef.current && !playerRef.current.paused) { isSocketAction.current = true; playerRef.current.currentTime = currentTime; playerRef.current.pause(); }
     };
     const handleReceiveSeek = (time) => {
-      if (playerRef.current && Math.abs(playerRef.current.currentTime - time) > 1) {
-        isSocketAction.current = true;
-        playerRef.current.currentTime = time;
-      }
+      if (playerRef.current && Math.abs(playerRef.current.currentTime - time) > 1) { isSocketAction.current = true; playerRef.current.currentTime = time; }
     };
     const handleReceiveVideoChange = (newUrl) => setVideoUrl(newUrl);
     const handleReceiveChatMessage = (message) => setMessages((prev) => [...prev, message]);
@@ -207,11 +218,8 @@ function App() {
       if (playerRef.current) {
         setVideoUrl(state.videoUrl);
         playerRef.current.currentTime = state.currentTime;
-        if (state.isPlaying) {
-          playerRef.current.play().catch(e => console.log("Autoplay bloqueado:", e));
-        } else {
-          playerRef.current.pause();
-        }
+        if (state.isPlaying) { playerRef.current.play().catch(e => console.log("Autoplay bloqueado:", e)); } 
+        else { playerRef.current.pause(); }
       }
     };
     const handleUserUpdate = ({ users }) => setUsersInRoom(users);
@@ -227,69 +235,94 @@ function App() {
 
     return () => {
       clearInterval(pingInterval);
-      socket.off('receive-play', handleReceivePlay);
-      socket.off('receive-pause', handleReceivePause);
-      socket.off('receive-seek', handleReceiveSeek);
-      socket.off('receive-video-change', handleReceiveVideoChange);
-      socket.off('chat-message', handleReceiveChatMessage);
-      socket.off('receive-video-state', handleReceiveVideoState);
-      socket.off('user-joined', handleUserUpdate);
-      socket.off('user-left', handleUserUpdate);
+      socket.off('receive-play'); socket.off('receive-pause'); socket.off('receive-seek');
+      socket.off('receive-video-change'); socket.off('chat-message'); socket.off('receive-video-state');
+      socket.off('user-joined'); socket.off('user-left');
     };
   }, [isInRoom, selectedRoom, username]);
+  
+  // Cargar datos de la sala seleccionada en el formulario de admin
+  useEffect(() => {
+    if (predefinedRooms[adminSelectedRoomId]) {
+      const room = predefinedRooms[adminSelectedRoomId];
+      setAdminNewName(room.name);
+      setAdminNewMovie(room.movie);
+      setAdminNewUrl(room.videoUrl);
+    }
+  }, [adminSelectedRoomId, predefinedRooms]);
 
-  const handlePlay = () => {
-    if (isSocketAction.current) { isSocketAction.current = false; return; }
-    socket.emit('send-play', { roomId: selectedRoom.id, currentTime: playerRef.current.currentTime });
-  };
-  const handlePause = () => {
-    if (isSocketAction.current) { isSocketAction.current = false; return; }
-    socket.emit('send-pause', { roomId: selectedRoom.id, currentTime: playerRef.current.currentTime });
-  };
-  const handleSeeked = () => {
-    if (isSocketAction.current) { isSocketAction.current = false; return; }
-    socket.emit('send-seek', { roomId: selectedRoom.id, time: playerRef.current.currentTime });
-  };
-  const handleChangeVideo = () => {
-    if (inputUrl) {
-      socket.emit('send-video-change', { roomId: selectedRoom.id, newUrl: inputUrl });
-      setInputUrl('');
-    }
-  };
-  const handleSendChatMessage = () => {
-    if (chatInput.trim()) {
-      socket.emit('send-chat-message', { roomId: selectedRoom.id, username, message: chatInput });
-      setChatInput('');
-    }
-  };
-  const handleJoinRoom = () => {
-    if (inputUsername.trim()) {
-      setUsername(inputUsername.trim());
-      setIsInRoom(true);
-    }
-  };
-  const copyRoomLink = () => {
-    navigator.clipboard.writeText(window.location.href);
-    setCopyButtonText('¡Copiado!');
-    setTimeout(() => setCopyButtonText('Copiar Enlace'), 2000);
-  };
+  const handlePlay = () => { if (!isSocketAction.current) { socket.emit('send-play', { roomId: selectedRoom.id, currentTime: playerRef.current.currentTime }); } isSocketAction.current = false; };
+  const handlePause = () => { if (!isSocketAction.current) { socket.emit('send-pause', { roomId: selectedRoom.id, currentTime: playerRef.current.currentTime }); } isSocketAction.current = false; };
+  const handleSeeked = () => { if (!isSocketAction.current) { socket.emit('send-seek', { roomId: selectedRoom.id, time: playerRef.current.currentTime }); } isSocketAction.current = false; };
+  const handleSendChatMessage = () => { if (chatInput.trim()) { socket.emit('send-chat-message', { roomId: selectedRoom.id, username, message: chatInput }); setChatInput(''); } };
+  const handleJoinRoom = () => { if (inputUsername.trim()) { setUsername(inputUsername.trim()); setIsInRoom(true); } };
+  const copyRoomLink = () => { navigator.clipboard.writeText(window.location.href); setCopyButtonText('¡Copiado!'); setTimeout(() => setCopyButtonText('Copiar Enlace'), 2000); };
   const leaveRoom = () => window.location.reload();
   const formatTimestamp = (timestamp) => new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  
+  const handleAdminUpdate = () => {
+    setAdminError(''); // Limpiar errores previos
+    if (!adminPassword) {
+        setAdminError('La contraseña es requerida.');
+        return;
+    }
+    socket.emit('admin-update-room', {
+        roomId: adminSelectedRoomId,
+        newName: adminNewName,
+        newMovie: adminNewMovie,
+        newUrl: adminNewUrl,
+        adminPassword: adminPassword,
+    });
+    // Considerar cerrar el modal o mostrar un mensaje de éxito
+  };
 
   // --- Renderizado Condicional ---
+  
+  const AdminPanel = () => (
+    <div className="modal-overlay">
+        <div className="modal-content">
+            <h2>Panel de Administrador</h2>
+            <div className="modal-inputs">
+                <label htmlFor="room-select">Seleccionar Sala</label>
+                <select id="room-select" value={adminSelectedRoomId} onChange={e => setAdminSelectedRoomId(e.target.value)} className="generic-input">
+                    {Object.entries(predefinedRooms).map(([id, room]) => (
+                        <option key={id} value={id}>{room.name} - {room.movie}</option>
+                    ))}
+                </select>
+                <label htmlFor="room-name">Nombre de la Sala</label>
+                <input id="room-name" type="text" value={adminNewName} onChange={e => setAdminNewName(e.target.value)} className="generic-input"/>
+                <label htmlFor="movie-name">Nombre de la Película</label>
+                <input id="movie-name" type="text" value={adminNewMovie} onChange={e => setAdminNewMovie(e.target.value)} className="generic-input"/>
+                <label htmlFor="video-url">URL del Video</label>
+                <input id="video-url" type="text" value={adminNewUrl} onChange={e => setAdminNewUrl(e.target.value)} className="generic-input"/>
+                <label htmlFor="admin-pass">Contraseña de Admin</label>
+                <input id="admin-pass" type="password" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} className="generic-input" placeholder="Contraseña secreta"/>
+            </div>
+            <p className="admin-error-message">{adminError}</p>
+            <div style={{display: 'flex', gap: '10px', justifyContent: 'center'}}>
+                <button onClick={handleAdminUpdate}>Guardar Cambios</button>
+                <button onClick={() => setIsAdminPanelOpen(false)} style={{backgroundColor: 'var(--secondary-text-color)'}}>Cancelar</button>
+            </div>
+        </div>
+    </div>
+  );
 
   if (!selectedRoom) {
     return (
       <>
         <AppStyles />
+        {isAdminPanelOpen && <AdminPanel />}
         <div className="lobby-container">
             <div className="lobby-header">
                 <h1>Bienvenido al Cine Virtual 🍿</h1>
                 <p>Selecciona una sala para entrar</p>
+                <button className="admin-button" onClick={() => setIsAdminPanelOpen(true)}>
+                    <svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.44,0.17-0.48,0.41L9.2,5.77C8.61,6.01,8.08,6.33,7.58,6.71L5.19,5.75C4.97,5.68,4.72,5.75,4.6,5.97L2.68,9.29 c-0.11,0.2-0.06,0.47,0.12,0.61l2.03,1.58C4.78,11.69,4.76,12,4.76,12.31c0,0.31,0.02,0.62,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.04,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.48-0.41l0.36-2.54c0.59-0.24,1.12-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0.01,0.59-0.22l1.92-3.32c0.11-0.2,0.06-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg>
+                </button>
             </div>
             <div className="room-selection-container">
-                {PREDEFINED_ROOMS.map(room => (
-                    <div key={room.id} className="room-card" onClick={() => setSelectedRoom(room)}>
+                {Object.entries(predefinedRooms).map(([id, room]) => (
+                    <div key={id} className="room-card" onClick={() => setSelectedRoom({id, ...room})}>
                         <h3>{room.name}</h3>
                         <p>{room.movie}</p>
                     </div>
@@ -304,11 +337,11 @@ function App() {
     return (
       <>
         <AppStyles />
-        <div className="join-modal-overlay">
-          <div className="join-modal">
+        <div className="modal-overlay">
+          <div className="modal-content">
             <h2>Entrando a {selectedRoom.name}</h2>
             <p>Por favor, introduce tu nombre de usuario para continuar.</p>
-            <div className="join-modal-inputs">
+            <div className="modal-inputs">
               <input 
                 type="text" 
                 placeholder="Tu nombre de usuario"
@@ -335,7 +368,6 @@ function App() {
               <h1>{selectedRoom.name}</h1>
               <p className="room-info">Película: <b>{selectedRoom.movie}</b> | Usuario: <b>{username}</b></p>
             </div>
-            {/* Opcional: Mantener el cambio de video si se desea */}
           </div>
           <div className="video-wrapper">
             <video ref={playerRef} controls src={videoUrl} onPlay={handlePlay} onPause={handlePause} onSeeked={handleSeeked} />
@@ -375,3 +407,4 @@ function App() {
 }
 
 export default App;
+

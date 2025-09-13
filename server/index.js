@@ -7,6 +7,9 @@ const { Server } = require("socket.io");
 const app = express();
 const server = http.createServer(app);
 
+// **NUEVO**: Contraseña secreta para acciones de administrador
+const ADMIN_SECRET = 'supersecreto123'; // ¡Cambia esto por una contraseña más segura!
+
 // Configuramos socket.io con CORS
 const io = new Server(server, {
   cors: {
@@ -15,22 +18,25 @@ const io = new Server(server, {
   }
 });
 
-// **NUEVO**: Definimos las salas de cine y sus películas
+// **ESTRUCTURA MEJORADA**: Definimos las salas de cine y sus películas.
+// Esta es ahora la "fuente de la verdad". El cliente la recibirá al conectarse.
 const PREDEFINED_ROOMS = {
   'sala-1': { 
-    name: 'Sala 1: Manos de Tijera', 
+    name: 'Sala 1', 
+    movie: 'Manos de Tijera',
     videoUrl: 'https://pub-cd2cf2772f534ea0b1f45983378f56d8.r2.dev/manosdetijera.mp4' 
   },
   'sala-2': { 
-    name: 'Sala 2: Big Buck Bunny', 
+    name: 'Sala 2', 
+    movie: 'Big Buck Bunny',
     videoUrl: 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4' 
   },
-  'sala-3': { name: 'Sala 3: (Próximamente)', videoUrl: '' },
-  'sala-4': { name: 'Sala 4: (Próximamente)', videoUrl: '' },
-  'sala-5': { name: 'Sala 5: (Próximamente)', videoUrl: '' },
+  'sala-3': { name: 'Sala 3', movie: '(Próximamente)', videoUrl: '' },
+  'sala-4': { name: 'Sala 4', movie: '(Próximamente)', videoUrl: '' },
+  'sala-5': { name: 'Sala 5', movie: '(Próximamente)', videoUrl: '' },
 };
 
-// Almacena el estado actual del video por sala (ESTO AHORA ES PERSISTENTE MIENTRAS EL SERVIDOR VIVA)
+// Almacena el estado actual del video por sala (persistente mientras el servidor viva)
 const roomStates = {}; 
 // Almacena los usuarios conectados por sala
 const roomUsers = {};
@@ -38,9 +44,11 @@ const roomUsers = {};
 // Escuchamos cuando un cliente se conecta
 io.on('connection', (socket) => {
   console.log(`Usuario Conectado: ${socket.id}`);
+  
+  // **NUEVO**: Al conectarse un usuario, le enviamos la lista de salas actualizada.
+  socket.emit('initial-lobby-data', PREDEFINED_ROOMS);
 
   socket.on('join-room', ({ roomId, username }) => {
-    // Validar que la sala exista
     if (!PREDEFINED_ROOMS[roomId]) {
       console.log(`Intento de unirse a sala inexistente: ${roomId}`);
       return; 
@@ -56,7 +64,6 @@ io.on('connection', (socket) => {
 
     io.in(roomId).emit('user-joined', { id: socket.id, name: username, users: roomUsers[roomId] });
 
-    // **LÓGICA MEJORADA**: Si la sala nunca ha sido usada, la inicializamos. Si ya existe, enviamos su estado actual.
     if (!roomStates[roomId]) {
       console.log(`Inicializando estado para la sala ${roomId}`);
       roomStates[roomId] = {
@@ -99,21 +106,52 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('receive-seek', time);
   });
 
-  // El cambio de video ya no es necesario si las salas son fijas, pero lo mantenemos por si acaso
-  socket.on('send-video-change', ({ roomId, newUrl }) => {
-    if (roomStates[roomId]) {
-      roomStates[roomId].videoUrl = newUrl;
-      roomStates[roomId].currentTime = 0;
-      roomStates[roomId].isPlaying = false;
-      io.in(roomId).emit('receive-video-change', newUrl);
-      io.in(roomId).emit('chat-message', {
-        username: 'Sistema',
-        message: `El video de la sala ha cambiado.`,
-        timestamp: Date.now(),
-        isSystem: true
-      });
+  // **NUEVO**: Evento para que un admin actualice una sala
+  socket.on('admin-update-room', ({ roomId, newName, newMovie, newUrl, adminPassword }) => {
+    // 1. Verificar contraseña
+    if (adminPassword !== ADMIN_SECRET) {
+      console.log(`Intento fallido de admin para actualizar la sala ${roomId}`);
+      socket.emit('admin-error', 'Contraseña de administrador incorrecta.');
+      return;
     }
+
+    // 2. Validar que la sala exista
+    if (!PREDEFINED_ROOMS[roomId]) {
+      socket.emit('admin-error', 'La sala que intentas actualizar no existe.');
+      return;
+    }
+
+    console.log(`Admin actualizando la sala ${roomId}`);
+    const room = PREDEFINED_ROOMS[roomId];
+    const roomState = roomStates[roomId];
+    
+    // 3. Actualizar datos en memoria
+    if (newName) room.name = newName;
+    if (newMovie) room.movie = newMovie;
+    
+    // Si la URL del video cambia, reseteamos el estado de la sala
+    if (newUrl && room.videoUrl !== newUrl) {
+      room.videoUrl = newUrl;
+      if (roomState) {
+        roomState.videoUrl = newUrl;
+        roomState.currentTime = 0;
+        roomState.isPlaying = false;
+        // Notificar a los que están DENTRO de la sala sobre el cambio de video
+        io.in(roomId).emit('receive-video-change', newUrl);
+        io.in(roomId).emit('chat-message', {
+          username: 'Sistema',
+          message: `Un administrador ha cambiado la película de la sala.`,
+          timestamp: Date.now(),
+          isSystem: true
+        });
+      }
+    }
+    
+    // 4. Notificar a TODOS los clientes conectados (incluso los del lobby) sobre los cambios
+    io.emit('update-lobby-data', PREDEFINED_ROOMS);
+    console.log(`Datos del lobby actualizados y enviados a todos los clientes.`);
   });
+
 
   socket.on('send-chat-message', ({ roomId, username, message }) => {
     const chatMessage = { username, message, timestamp: Date.now() };
@@ -136,7 +174,6 @@ io.on('connection', (socket) => {
           isSystem: true
         });
         
-        // **LÓGICA MEJORADA**: Si la sala queda vacía, pausamos el video pero NO borramos el estado.
         if (roomUsers[roomId].length === 0) {
           console.log(`Sala ${roomId} vacía. Pausando video y limpiando lista de usuarios.`);
           if(roomStates[roomId]) {
@@ -154,3 +191,4 @@ const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`Servidor de Cine Virtual escuchando en el puerto ${PORT}`);
 });
+
