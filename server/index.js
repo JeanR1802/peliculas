@@ -7,49 +7,66 @@ const { Server } = require("socket.io");
 const app = express();
 const server = http.createServer(app);
 
-// Configuramos socket.io con CORS para permitir la conexión desde tu app de React
+// Configuramos socket.io con CORS
 const io = new Server(server, {
   cors: {
-    origin: "*", // En producción, cambiar "*" por tu dominio "https://modixia.pro"
+    origin: "*", // En producción, cambiar "*" por tu dominio
     methods: ["GET", "POST"]
   }
 });
 
-// Almacena el estado actual del video por sala
-const roomStates = {}; // { roomId: { videoUrl: '...', currentTime: 0, isPlaying: false } }
+// **NUEVO**: Definimos las salas de cine y sus películas
+const PREDEFINED_ROOMS = {
+  'sala-1': { 
+    name: 'Sala 1: Manos de Tijera', 
+    videoUrl: 'https://pub-cd2cf2772f534ea0b1f45983378f56d8.r2.dev/manosdetijera.mp4' 
+  },
+  'sala-2': { 
+    name: 'Sala 2: Big Buck Bunny', 
+    videoUrl: 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4' 
+  },
+  'sala-3': { name: 'Sala 3: (Próximamente)', videoUrl: '' },
+  'sala-4': { name: 'Sala 4: (Próximamente)', videoUrl: '' },
+  'sala-5': { name: 'Sala 5: (Próximamente)', videoUrl: '' },
+};
+
+// Almacena el estado actual del video por sala (ESTO AHORA ES PERSISTENTE MIENTRAS EL SERVIDOR VIVA)
+const roomStates = {}; 
 // Almacena los usuarios conectados por sala
-const roomUsers = {}; // { roomId: [{ id: socket.id, name: '...' }] }
+const roomUsers = {};
 
 // Escuchamos cuando un cliente se conecta
 io.on('connection', (socket) => {
   console.log(`Usuario Conectado: ${socket.id}`);
 
-  // Evento para unirse a una sala y establecer el nombre de usuario
   socket.on('join-room', ({ roomId, username }) => {
+    // Validar que la sala exista
+    if (!PREDEFINED_ROOMS[roomId]) {
+      console.log(`Intento de unirse a sala inexistente: ${roomId}`);
+      return; 
+    }
+    
     socket.join(roomId);
     console.log(`Usuario ${username} (${socket.id}) se unió a la sala: ${roomId}`);
 
-    // Añadir el usuario a la lista de la sala
     if (!roomUsers[roomId]) {
       roomUsers[roomId] = [];
     }
     roomUsers[roomId].push({ id: socket.id, name: username });
 
-    // Informar a todos en la sala que un nuevo usuario se unió
     io.in(roomId).emit('user-joined', { id: socket.id, name: username, users: roomUsers[roomId] });
 
-    // Si la sala ya tiene un estado de video, enviárselo al nuevo usuario
-    if (roomStates[roomId]) {
-      socket.emit('receive-video-state', roomStates[roomId]);
-    } else {
-      // Si la sala es nueva, inicializar el estado
+    // **LÓGICA MEJORADA**: Si la sala nunca ha sido usada, la inicializamos. Si ya existe, enviamos su estado actual.
+    if (!roomStates[roomId]) {
+      console.log(`Inicializando estado para la sala ${roomId}`);
       roomStates[roomId] = {
-        videoUrl: 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+        videoUrl: PREDEFINED_ROOMS[roomId].videoUrl,
         currentTime: 0,
         isPlaying: false
       };
-      socket.emit('receive-video-state', roomStates[roomId]); // Enviar estado inicial
     }
+    
+    socket.emit('receive-video-state', roomStates[roomId]);
 
     io.in(roomId).emit('chat-message', {
       username: 'Sistema',
@@ -59,7 +76,6 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Cuando un usuario da 'play', lo comunicamos a los demás en la sala
   socket.on('send-play', ({ roomId, currentTime }) => {
     if (roomStates[roomId]) {
       roomStates[roomId].isPlaying = true;
@@ -68,7 +84,6 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('receive-play', currentTime);
   });
 
-  // Cuando un usuario da 'pause'
   socket.on('send-pause', ({ roomId, currentTime }) => {
     if (roomStates[roomId]) {
       roomStates[roomId].isPlaying = false;
@@ -77,7 +92,6 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('receive-pause', currentTime);
   });
 
-  // Cuando un usuario busca un punto en el video
   socket.on('send-seek', ({ roomId, time }) => {
     if (roomStates[roomId]) {
       roomStates[roomId].currentTime = time;
@@ -85,39 +99,29 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('receive-seek', time);
   });
 
-  // Cuando un usuario cambia el video
+  // El cambio de video ya no es necesario si las salas son fijas, pero lo mantenemos por si acaso
   socket.on('send-video-change', ({ roomId, newUrl }) => {
     if (roomStates[roomId]) {
       roomStates[roomId].videoUrl = newUrl;
       roomStates[roomId].currentTime = 0;
       roomStates[roomId].isPlaying = false;
+      io.in(roomId).emit('receive-video-change', newUrl);
+      io.in(roomId).emit('chat-message', {
+        username: 'Sistema',
+        message: `El video de la sala ha cambiado.`,
+        timestamp: Date.now(),
+        isSystem: true
+      });
     }
-    io.in(roomId).emit('receive-video-change', newUrl);
-    io.in(roomId).emit('chat-message', {
-      username: 'Sistema',
-      message: `El video ha cambiado.`,
-      timestamp: Date.now(),
-      isSystem: true
-    });
   });
 
-  // Cuando un usuario envía un mensaje de chat
   socket.on('send-chat-message', ({ roomId, username, message }) => {
-    const chatMessage = {
-      username,
-      message,
-      timestamp: Date.now()
-    };
+    const chatMessage = { username, message, timestamp: Date.now() };
     io.in(roomId).emit('chat-message', chatMessage);
   });
   
-  // **NUEVO**: Listener para mantener el servidor despierto
-  socket.on('ping', () => {
-    // No necesita hacer nada, solo recibir la conexión es suficiente
-    // console.log(`Ping recibido de ${socket.id}`);
-  });
+  socket.on('ping', () => { /* Mantiene el servidor despierto */ });
 
-  // Cuando un usuario se desconecta
   socket.on('disconnect', () => {
     console.log(`Usuario Desconectado: ${socket.id}`);
     for (const roomId in roomUsers) {
@@ -131,10 +135,14 @@ io.on('connection', (socket) => {
           timestamp: Date.now(),
           isSystem: true
         });
+        
+        // **LÓGICA MEJORADA**: Si la sala queda vacía, pausamos el video pero NO borramos el estado.
         if (roomUsers[roomId].length === 0) {
+          console.log(`Sala ${roomId} vacía. Pausando video y limpiando lista de usuarios.`);
+          if(roomStates[roomId]) {
+            roomStates[roomId].isPlaying = false;
+          }
           delete roomUsers[roomId];
-          delete roomStates[roomId];
-          console.log(`Sala ${roomId} vacía. Estado y usuarios eliminados.`);
         }
         break;
       }
@@ -144,5 +152,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-  console.log(`Servidor de Watch Party escuchando en el puerto ${PORT}`);
+  console.log(`Servidor de Cine Virtual escuchando en el puerto ${PORT}`);
 });
