@@ -51,9 +51,6 @@ io.on('connection', (socket) => {
       socket.emit('receive-video-state', roomStates[roomId]); // Enviar estado inicial
     }
 
-    // Emitir el historial de mensajes de la sala al usuario que se une
-    // Opcional: Podrías almacenar mensajes por sala y enviarlos aquí.
-    // Por ahora, solo informamos que alguien se unió.
     io.in(roomId).emit('chat-message', {
       username: 'Sistema',
       message: `${username} se ha unido a la sala.`,
@@ -66,47 +63,42 @@ io.on('connection', (socket) => {
   socket.on('send-play', ({ roomId, currentTime }) => {
     if (roomStates[roomId]) {
       roomStates[roomId].isPlaying = true;
-      roomStates[roomId].currentTime = currentTime; // Actualizamos el tiempo en el servidor
+      roomStates[roomId].currentTime = currentTime;
     }
     socket.to(roomId).emit('receive-play', currentTime);
-    console.log(`Evento 'play' enviado a la sala ${roomId} en ${currentTime}s`);
   });
 
   // Cuando un usuario da 'pause'
   socket.on('send-pause', ({ roomId, currentTime }) => {
     if (roomStates[roomId]) {
       roomStates[roomId].isPlaying = false;
-      roomStates[roomId].currentTime = currentTime; // Actualizamos el tiempo en el servidor
+      roomStates[roomId].currentTime = currentTime;
     }
     socket.to(roomId).emit('receive-pause', currentTime);
-    console.log(`Evento 'pause' enviado a la sala ${roomId} en ${currentTime}s`);
   });
 
   // Cuando un usuario busca un punto en el video
   socket.on('send-seek', ({ roomId, time }) => {
     if (roomStates[roomId]) {
-      roomStates[roomId].currentTime = time; // Actualizamos el tiempo en el servidor
+      roomStates[roomId].currentTime = time;
     }
     socket.to(roomId).emit('receive-seek', time);
-    console.log(`Evento 'seek' a ${time}s enviado a la sala: ${roomId}`);
   });
 
   // Cuando un usuario cambia el video
   socket.on('send-video-change', ({ roomId, newUrl }) => {
     if (roomStates[roomId]) {
       roomStates[roomId].videoUrl = newUrl;
-      roomStates[roomId].currentTime = 0; // Reiniciar tiempo al cambiar video
+      roomStates[roomId].currentTime = 0;
       roomStates[roomId].isPlaying = false;
     }
-    // Emitir a TODOS en la sala, incluido el que lo envió, para que se actualice la URL
     io.in(roomId).emit('receive-video-change', newUrl);
     io.in(roomId).emit('chat-message', {
       username: 'Sistema',
-      message: `El video ha cambiado a: ${newUrl}`,
+      message: `El video ha cambiado.`,
       timestamp: Date.now(),
       isSystem: true
     });
-    console.log(`Evento 'video-change' a ${newUrl} enviado a la sala: ${roomId}`);
   });
 
   // Cuando un usuario envía un mensaje de chat
@@ -116,15 +108,18 @@ io.on('connection', (socket) => {
       message,
       timestamp: Date.now()
     };
-    // Emitir el mensaje a todos en la sala
     io.in(roomId).emit('chat-message', chatMessage);
-    console.log(`Mensaje en sala ${roomId} de ${username}: ${message}`);
+  });
+  
+  // **NUEVO**: Listener para mantener el servidor despierto
+  socket.on('ping', () => {
+    // No necesita hacer nada, solo recibir la conexión es suficiente
+    // console.log(`Ping recibido de ${socket.id}`);
   });
 
   // Cuando un usuario se desconecta
   socket.on('disconnect', () => {
     console.log(`Usuario Desconectado: ${socket.id}`);
-    // Recorrer todas las salas para encontrar y eliminar al usuario
     for (const roomId in roomUsers) {
       const userIndex = roomUsers[roomId].findIndex(user => user.id === socket.id);
       if (userIndex !== -1) {
@@ -136,13 +131,12 @@ io.on('connection', (socket) => {
           timestamp: Date.now(),
           isSystem: true
         });
-        // Si no quedan usuarios en la sala, limpiar el estado de la sala
         if (roomUsers[roomId].length === 0) {
           delete roomUsers[roomId];
           delete roomStates[roomId];
           console.log(`Sala ${roomId} vacía. Estado y usuarios eliminados.`);
         }
-        break; // El usuario solo puede estar en una sala
+        break;
       }
     }
   });

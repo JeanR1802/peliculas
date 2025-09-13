@@ -20,7 +20,6 @@ const AppStyles = () => (
       --border-color: #30363d;
       --chat-bg: #2d333b;
       --system-message-color: #79c0ff;
-      --success-color: #28a745;
     }
 
     body {
@@ -38,7 +37,7 @@ const AppStyles = () => (
     .App {
       display: flex;
       flex-direction: column;
-      /* La altura ahora es controlada por JS para evitar bugs en móviles */
+      height: 100vh;
       width: 100vw;
       background-color: var(--bg-color);
     }
@@ -48,7 +47,7 @@ const AppStyles = () => (
       flex: 1; /* Ocupa todo el espacio vertical disponible */
       display: flex;
       flex-direction: column;
-      padding: 15px 20px 10px 20px;
+      padding: 20px 20px 10px 20px;
       box-sizing: border-box;
       overflow: hidden; /* Previene desbordamientos */
       gap: 15px;
@@ -63,7 +62,7 @@ const AppStyles = () => (
     }
 
     .header-section { text-align: center; margin-bottom: 0; }
-    h1 { font-size: 1.5rem; margin: 0; }
+    h1 { font-size: 1.8rem; margin: 0; }
     .room-info { font-size: 0.9rem; margin: 0; }
     .room-info b { color: var(--primary-accent); font-weight: 600; }
     .video-input-container { display: flex; gap: 10px; width: 100%; max-width: 800px; }
@@ -85,34 +84,23 @@ const AppStyles = () => (
       object-fit: contain; /* Mantiene la relación de aspecto del video */
     }
     
-    /* Contenedor inferior (Chat y Lista de Usuarios) */
-    .bottom-section {
-      height: 40vh; /* Aumentamos un poco la altura */
-      flex-shrink: 0;
-      display: flex;
+    /* Sección de Chat (abajo) */
+    .chat-section {
+      height: 35vh; /* Altura fija: 35% de la pantalla */
+      flex-shrink: 0; /* Evita que se encoja */
       background-color: var(--card-bg-color);
       border-top: 2px solid var(--border-color);
-    }
-    
-    /* Sección de Chat */
-    .chat-section {
-      flex-grow: 1;
       display: flex;
       flex-direction: column;
       padding: 15px;
       box-sizing: border-box;
-      border-right: 1px solid var(--border-color);
-      min-width: 0; /* Corrección para flexbox */
     }
 
     .chat-messages {
-      flex-grow: 1;
-      overflow-y: auto;
+      flex-grow: 1; /* Ocupa todo el espacio disponible en la sección de chat */
+      overflow-y: auto; /* Habilita el scroll vertical */
       margin-bottom: 15px;
       padding-right: 10px;
-      display: flex;
-      flex-direction: column;
-      min-height: 0; /* **CORRECCIÓN**: Evita que el contenedor crezca con mensajes largos */
     }
 
     /* Estilos de la barra de scroll */
@@ -121,79 +109,13 @@ const AppStyles = () => (
     .chat-messages::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 10px; }
     .chat-messages::-webkit-scrollbar-thumb:hover { background: var(--secondary-text-color); }
 
-    .chat-message { 
-      padding: 8px 12px;
-      border-radius: 12px;
-      margin-bottom: 8px; 
-      word-wrap: break-word; 
-      max-width: 70%;
-      display: flex;
-      flex-direction: column;
-    }
-    .chat-message.system { 
-      color: var(--system-message-color); 
-      font-style: italic; 
-      text-align: center; 
-      font-size: 0.9em;
-      background: none;
-      align-self: center;
-      max-width: 90%; /* **CORRECCIÓN**: Permite que los mensajes del sistema sean más anchos */
-      word-break: break-all; /* **CORRECCIÓN**: Fuerza el corte de URLs largas para que no desborden */
-    }
-    .chat-message.me {
-      background-color: var(--primary-accent);
-      color: white;
-      align-self: flex-end; /* Alinea a la derecha */
-    }
-    .chat-message.other {
-      background-color: var(--chat-bg);
-      align-self: flex-start; /* Alinea a la izquierda */
-    }
-    .chat-message .username { font-weight: 600; margin-bottom: 3px; font-size: 0.9em; }
-    .chat-message.me .username { color: #f0f0f0; } /* Nombre de usuario en mensajes propios */
-    .chat-message.other .username { color: var(--primary-accent-hover); }
-
-    .timestamp {
-      font-size: 0.75em;
-      color: var(--secondary-text-color);
-      text-align: right;
-      margin-top: 4px;
-    }
-    .chat-message.me .timestamp { color: rgba(255, 255, 255, 0.7); }
+    .chat-message { margin-bottom: 8px; word-wrap: break-word; }
+    .chat-message.system { color: var(--system-message-color); font-style: italic; text-align: center; font-size: 0.9em; }
+    .chat-message.me .username { color: var(--primary-accent); font-weight: 600; }
+    .chat-message .username { color: var(--primary-accent-hover); font-weight: 600; margin-right: 5px; }
+    .chat-message .text { color: var(--text-color); }
 
     .chat-input-container { display: flex; gap: 10px; }
-    
-    /* Lista de Usuarios */
-    .user-list-section {
-      width: 250px;
-      padding: 15px;
-      box-sizing: border-box;
-      display: flex;
-      flex-direction: column;
-      flex-shrink: 0;
-    }
-    .user-list-section h3 {
-      margin: 0 0 15px 0;
-      text-align: center;
-      color: var(--secondary-text-color);
-    }
-    .user-list {
-      list-style-type: none;
-      padding: 0;
-      margin: 0;
-      overflow-y: auto;
-    }
-    .user-list-item {
-      padding: 8px;
-      border-radius: 5px;
-      margin-bottom: 5px;
-      color: var(--text-color);
-    }
-    .user-list-item::before {
-      content: '●';
-      color: var(--success-color);
-      margin-right: 10px;
-    }
     
     .generic-input {
       flex-grow: 1; padding: 12px 18px; font-size: 1rem; border-radius: 8px;
@@ -204,7 +126,7 @@ const AppStyles = () => (
     .generic-input::placeholder { color: var(--secondary-text-color); }
 
     button {
-      padding: 10px 20px; font-size: 0.9rem; font-weight: bold; cursor: pointer;
+      padding: 12px 24px; font-size: 1rem; font-weight: bold; cursor: pointer;
       border-radius: 8px; border: none; background-color: var(--primary-accent);
       color: white; transition: background-color 0.2s ease, transform 0.1s ease;
     }
@@ -212,16 +134,7 @@ const AppStyles = () => (
     button:active { transform: translateY(0); }
     button:disabled { background-color: var(--border-color); cursor: not-allowed; transform: none; }
 
-    .control-buttons {
-        display: flex;
-        gap: 10px;
-        margin-top: auto; /* Empuja los botones al final */
-    }
-    .copy-btn.copied {
-        background-color: var(--success-color);
-    }
-    
-    /* Modal de Unirse a la Sala (sin cambios) */
+    /* Modal de Unirse a la Sala (sin cambios de layout) */
     .join-modal-overlay {
         position: fixed; top: 0; left: 0; right: 0; bottom: 0;
         background: rgba(0, 0, 0, 0.7); display: flex; justify-content: center;
@@ -240,13 +153,6 @@ const AppStyles = () => (
         from { opacity: 0; transform: translateY(-20px); }
         to { opacity: 1; transform: translateY(0); }
     }
-    
-    /* Responsive para pantallas pequeñas */
-    @media (max-width: 768px) {
-        .user-list-section { display: none; } /* Ocultamos la lista de usuarios en móvil */
-        .chat-section { border-right: none; }
-        h1 { font-size: 1.2rem; }
-    }
   `}</style>
 );
 
@@ -256,8 +162,6 @@ function App() {
   const [roomId, setRoomId] = useState('');
   const [username, setUsername] = useState('');
   const [isInRoom, setIsInRoom] = useState(false);
-  const [copyButtonText, setCopyButtonText] = useState('Copiar Enlace');
-  const [appHeight, setAppHeight] = useState('100vh'); // **NUEVO**: Estado para la altura de la app
 
   // Estados para los inputs del modal
   const [inputRoomId, setInputRoomId] = useState('');
@@ -280,62 +184,54 @@ function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // **NUEVO Y MEJORADO**: Efecto para manejar el layout y la pantalla completa
-  useEffect(() => {
-    const handleResize = () => {
-      // Usamos window.innerHeight para obtener la altura real de la ventana visible
-      // y la guardamos como un string con 'px' para usarla en el estilo.
-      setAppHeight(`${window.innerHeight}px`);
-    };
-
-    // Escuchamos cambios de tamaño y de estado de pantalla completa
-    window.addEventListener('resize', handleResize);
-    document.addEventListener('fullscreenchange', handleResize);
-
-    // Establecemos la altura inicial
-    handleResize();
-
-    // Limpieza de listeners
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      document.removeEventListener('fullscreenchange', handleResize);
-    };
-  }, []);
-
-
   // Efecto principal para la comunicación con el socket
   useEffect(() => {
     // No hacer nada si no estamos en una sala
     if (!isInRoom) return;
 
+    // --- Unirse a la sala con el nombre de usuario ---
     socket.emit('join-room', { roomId, username });
 
     // --- Definimos los manejadores de eventos del servidor ---
     const handleReceivePlay = (currentTime) => {
+      console.log("Recibido: Play");
       if (playerRef.current && playerRef.current.paused) {
         isSocketAction.current = true;
         playerRef.current.currentTime = currentTime;
         playerRef.current.play();
       }
     };
+
     const handleReceivePause = (currentTime) => {
+      console.log("Recibido: Pause");
       if (playerRef.current && !playerRef.current.paused) {
         isSocketAction.current = true;
         playerRef.current.currentTime = currentTime;
         playerRef.current.pause();
       }
     };
+    
     const handleReceiveSeek = (time) => {
+      console.log(`Recibido: Seek a ${time}`);
       if (playerRef.current && Math.abs(playerRef.current.currentTime - time) > 1) {
         isSocketAction.current = true;
         playerRef.current.currentTime = time;
       }
     };
-    const handleReceiveVideoChange = (newUrl) => setVideoUrl(newUrl);
-    const handleReceiveChatMessage = (message) => setMessages((prev) => [...prev, message]);
+    
+    const handleReceiveVideoChange = (newUrl) => {
+      console.log(`Recibido cambio de video: ${newUrl}`);
+      setVideoUrl(newUrl);
+    };
+
+    const handleReceiveChatMessage = (message) => {
+      setMessages((prevMessages) => [...prevMessages, message]);
+    };
+
     const handleReceiveVideoState = (state) => {
+        console.log("Recibido estado del video al unirse:", state);
         if (playerRef.current) {
-            setVideoUrl(state.videoUrl);
+            setVideoUrl(state.videoUrl); // Actualiza la URL primero
             playerRef.current.currentTime = state.currentTime;
             if (state.isPlaying) {
                 playerRef.current.play().catch(e => console.log("Autoplay bloqueado:", e));
@@ -344,7 +240,9 @@ function App() {
             }
         }
     };
-    const handleUserUpdate = ({ users }) => setUsersInRoom(users);
+
+    const handleUserJoined = ({ users }) => setUsersInRoom(users);
+    const handleUserLeft = ({ users }) => setUsersInRoom(users);
 
     // --- Nos suscribimos a los eventos ---
     socket.on('receive-play', handleReceivePlay);
@@ -353,8 +251,8 @@ function App() {
     socket.on('receive-video-change', handleReceiveVideoChange);
     socket.on('chat-message', handleReceiveChatMessage);
     socket.on('receive-video-state', handleReceiveVideoState);
-    socket.on('user-joined', handleUserUpdate);
-    socket.on('user-left', handleUserUpdate);
+    socket.on('user-joined', handleUserJoined);
+    socket.on('user-left', handleUserLeft);
 
     // --- Limpieza de listeners ---
     return () => {
@@ -364,36 +262,41 @@ function App() {
       socket.off('receive-video-change', handleReceiveVideoChange);
       socket.off('chat-message', handleReceiveChatMessage);
       socket.off('receive-video-state', handleReceiveVideoState);
-      socket.off('user-joined', handleUserUpdate);
-      socket.off('user-left', handleUserUpdate);
+      socket.off('user-joined', handleUserJoined);
+      socket.off('user-left', handleUserLeft);
     };
-  }, [isInRoom, roomId, username]);
+  }, [isInRoom, roomId, username]); // Se activa cuando nos unimos a una sala
 
-  // --- Funciones de control y de envío de eventos ---
+  // --- Funciones que envían acciones al servidor ---
   const handlePlay = () => {
     if (isSocketAction.current) { isSocketAction.current = false; return; }
     socket.emit('send-play', { roomId, currentTime: playerRef.current.currentTime });
   };
+
   const handlePause = () => {
     if (isSocketAction.current) { isSocketAction.current = false; return; }
     socket.emit('send-pause', { roomId, currentTime: playerRef.current.currentTime });
   };
+  
   const handleSeeked = () => {
     if (isSocketAction.current) { isSocketAction.current = false; return; }
     socket.emit('send-seek', { roomId, time: playerRef.current.currentTime });
   };
+  
   const handleChangeVideo = () => {
     if (inputUrl) {
       socket.emit('send-video-change', { roomId, newUrl: inputUrl });
       setInputUrl('');
     }
   };
+
   const handleSendChatMessage = () => {
     if (chatInput.trim()) {
       socket.emit('send-chat-message', { roomId, username, message: chatInput });
       setChatInput('');
     }
   };
+
   const handleJoinRoom = () => {
     if (inputRoomId.trim() && inputUsername.trim()) {
       setRoomId(inputRoomId.trim());
@@ -401,20 +304,10 @@ function App() {
       setIsInRoom(true);
     }
   };
-  const copyRoomLink = () => {
-    navigator.clipboard.writeText(window.location.href);
-    setCopyButtonText('¡Copiado!');
-    setTimeout(() => setCopyButtonText('Copiar Enlace'), 2000);
-  };
-  const leaveRoom = () => {
-    window.location.reload();
-  };
-  const formatTimestamp = (timestamp) => {
-    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
 
   // --- Renderizado Condicional ---
 
+  // Si no estamos en una sala, muestra el modal para unirse
   if (!isInRoom) {
     return (
       <>
@@ -451,15 +344,16 @@ function App() {
     );
   }
 
+  // Si ya estamos en una sala, muestra la aplicación principal
   return (
     <>
       <AppStyles />
-      <div className="App" style={{ height: appHeight }}> {/* **AQUÍ SE APLICA LA ALTURA DINÁMICA** */}
+      <div className="App">
         <div className="video-section">
           <div className="header-and-input">
             <div className="header-section">
               <h1>Watch Party 🍿</h1>
-              <p className="room-info">Sala: <b>{roomId}</b> | Usuario: <b>{username}</b></p>
+              <p className="room-info">Sala: <b>{roomId}</b> | Usuario: <b>{username}</b> | Conectados: {usersInRoom.length}</p>
             </div>
             <div className="video-input-container">
               <input 
@@ -487,42 +381,32 @@ function App() {
           </div>
         </div>
 
-        <div className="bottom-section">
-            <div className="chat-section">
-                <div className="chat-messages">
-                    {messages.map((msg, index) => (
-                    <div key={index} className={`chat-message ${msg.isSystem ? 'system' : (msg.username === username ? 'me' : 'other')}`}>
-                        {!msg.isSystem && <span className="username">{msg.username}</span>}
-                        <span className="text">{msg.message}</span>
-                        {!msg.isSystem && <span className="timestamp">{formatTimestamp(msg.timestamp)}</span>}
-                    </div>
-                    ))}
-                    <div ref={messagesEndRef} />
-                </div>
-                <div className="chat-input-container">
-                    <input 
-                    type="text" 
-                    placeholder="Escribe un mensaje..."
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSendChatMessage()}
-                    className="generic-input"
-                    />
-                    <button onClick={handleSendChatMessage}>Enviar</button>
-                </div>
-            </div>
-            <div className="user-list-section">
-                <h3>Conectados ({usersInRoom.length})</h3>
-                <ul className="user-list">
-                  {usersInRoom.map(user => (
-                    <li key={user.id} className="user-list-item">{user.name}</li>
-                  ))}
-                </ul>
-                <div className="control-buttons">
-                    <button onClick={copyRoomLink} className={`copy-btn ${copyButtonText === '¡Copiado!' ? 'copied' : ''}`}>{copyButtonText}</button>
-                    <button onClick={leaveRoom}>Salir</button>
-                </div>
-            </div>
+        <div className="chat-section">
+          <div className="chat-messages">
+            {messages.map((msg, index) => (
+              <p key={index} className={`chat-message ${msg.isSystem ? 'system' : ''} ${msg.username === username ? 'me' : ''}`}>
+                {msg.isSystem ? (
+                  msg.message
+                ) : (
+                  <>
+                    <span className="username">{msg.username}:</span> <span className="text">{msg.message}</span>
+                  </>
+                )}
+              </p>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+          <div className="chat-input-container">
+            <input 
+              type="text" 
+              placeholder="Escribe un mensaje..."
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSendChatMessage()}
+              className="generic-input"
+            />
+            <button onClick={handleSendChatMessage}>Enviar</button>
+          </div>
         </div>
       </div>
     </>
@@ -530,4 +414,3 @@ function App() {
 }
 
 export default App;
-
