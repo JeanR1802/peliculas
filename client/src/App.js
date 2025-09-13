@@ -142,6 +142,58 @@ const AppStyles = () => (
   `}</style>
 );
 
+// **NUEVO**: Panel de Admin como un componente separado para evitar re-renderizados indeseados
+const AdminPanel = ({ 
+    predefinedRooms, 
+    adminSelectedRoomId, setAdminSelectedRoomId,
+    adminNewName, setAdminNewName,
+    adminNewMovie, setAdminNewMovie,
+    adminNewUrl, setAdminNewUrl,
+    adminPassword, setAdminPassword,
+    adminError,
+    handleAdminUpdate,
+    setIsAdminPanelOpen 
+}) => {
+    // Cargar datos de la sala seleccionada en el formulario de admin
+    useEffect(() => {
+        if (predefinedRooms[adminSelectedRoomId]) {
+            const room = predefinedRooms[adminSelectedRoomId];
+            setAdminNewName(room.name);
+            setAdminNewMovie(room.movie);
+            setAdminNewUrl(room.videoUrl);
+        }
+    }, [adminSelectedRoomId, predefinedRooms, setAdminNewName, setAdminNewMovie, setAdminNewUrl]);
+
+    return (
+        <div className="modal-overlay">
+            <div className="modal-content">
+                <h2>Panel de Administrador</h2>
+                <div className="modal-inputs">
+                    <label htmlFor="room-select">Seleccionar Sala</label>
+                    <select id="room-select" value={adminSelectedRoomId} onChange={e => setAdminSelectedRoomId(e.target.value)} className="generic-input">
+                        {Object.entries(predefinedRooms).map(([id, room]) => (
+                            <option key={id} value={id}>{room.name} - {room.movie}</option>
+                        ))}
+                    </select>
+                    <label htmlFor="room-name">Nombre de la Sala</label>
+                    <input id="room-name" type="text" value={adminNewName} onChange={e => setAdminNewName(e.target.value)} className="generic-input"/>
+                    <label htmlFor="movie-name">Nombre de la Película</label>
+                    <input id="movie-name" type="text" value={adminNewMovie} onChange={e => setAdminNewMovie(e.target.value)} className="generic-input"/>
+                    <label htmlFor="video-url">URL del Video</label>
+                    <input id="video-url" type="text" value={adminNewUrl} onChange={e => setAdminNewUrl(e.target.value)} className="generic-input"/>
+                    <label htmlFor="admin-pass">Contraseña de Admin</label>
+                    <input id="admin-pass" type="password" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} className="generic-input" placeholder="Contraseña secreta"/>
+                </div>
+                <p className="admin-error-message">{adminError}</p>
+                <div style={{display: 'flex', gap: '10px', justifyContent: 'center'}}>
+                    <button onClick={handleAdminUpdate}>Guardar Cambios</button>
+                    <button onClick={() => setIsAdminPanelOpen(false)} style={{backgroundColor: 'var(--secondary-text-color)'}}>Cancelar</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 function App() {
   const [predefinedRooms, setPredefinedRooms] = useState({});
   const [selectedRoom, setSelectedRoom] = useState(null);
@@ -240,16 +292,6 @@ function App() {
       socket.off('user-joined'); socket.off('user-left');
     };
   }, [isInRoom, selectedRoom, username]);
-  
-  // Cargar datos de la sala seleccionada en el formulario de admin
-  useEffect(() => {
-    if (predefinedRooms[adminSelectedRoomId]) {
-      const room = predefinedRooms[adminSelectedRoomId];
-      setAdminNewName(room.name);
-      setAdminNewMovie(room.movie);
-      setAdminNewUrl(room.videoUrl);
-    }
-  }, [adminSelectedRoomId, predefinedRooms]);
 
   const handlePlay = () => { if (!isSocketAction.current) { socket.emit('send-play', { roomId: selectedRoom.id, currentTime: playerRef.current.currentTime }); } isSocketAction.current = false; };
   const handlePause = () => { if (!isSocketAction.current) { socket.emit('send-pause', { roomId: selectedRoom.id, currentTime: playerRef.current.currentTime }); } isSocketAction.current = false; };
@@ -274,44 +316,31 @@ function App() {
         adminPassword: adminPassword,
     });
     // Considerar cerrar el modal o mostrar un mensaje de éxito
+    // setIsAdminPanelOpen(false); // Podrías descomentar esto para cerrar el panel al guardar
   };
 
   // --- Renderizado Condicional ---
-  
-  const AdminPanel = () => (
-    <div className="modal-overlay">
-        <div className="modal-content">
-            <h2>Panel de Administrador</h2>
-            <div className="modal-inputs">
-                <label htmlFor="room-select">Seleccionar Sala</label>
-                <select id="room-select" value={adminSelectedRoomId} onChange={e => setAdminSelectedRoomId(e.target.value)} className="generic-input">
-                    {Object.entries(predefinedRooms).map(([id, room]) => (
-                        <option key={id} value={id}>{room.name} - {room.movie}</option>
-                    ))}
-                </select>
-                <label htmlFor="room-name">Nombre de la Sala</label>
-                <input id="room-name" type="text" value={adminNewName} onChange={e => setAdminNewName(e.target.value)} className="generic-input"/>
-                <label htmlFor="movie-name">Nombre de la Película</label>
-                <input id="movie-name" type="text" value={adminNewMovie} onChange={e => setAdminNewMovie(e.target.value)} className="generic-input"/>
-                <label htmlFor="video-url">URL del Video</label>
-                <input id="video-url" type="text" value={adminNewUrl} onChange={e => setAdminNewUrl(e.target.value)} className="generic-input"/>
-                <label htmlFor="admin-pass">Contraseña de Admin</label>
-                <input id="admin-pass" type="password" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} className="generic-input" placeholder="Contraseña secreta"/>
-            </div>
-            <p className="admin-error-message">{adminError}</p>
-            <div style={{display: 'flex', gap: '10px', justifyContent: 'center'}}>
-                <button onClick={handleAdminUpdate}>Guardar Cambios</button>
-                <button onClick={() => setIsAdminPanelOpen(false)} style={{backgroundColor: 'var(--secondary-text-color)'}}>Cancelar</button>
-            </div>
-        </div>
-    </div>
-  );
 
   if (!selectedRoom) {
     return (
       <>
         <AppStyles />
-        {isAdminPanelOpen && <AdminPanel />}
+        {isAdminPanelOpen && <AdminPanel 
+            predefinedRooms={predefinedRooms}
+            adminSelectedRoomId={adminSelectedRoomId}
+            setAdminSelectedRoomId={setAdminSelectedRoomId}
+            adminNewName={adminNewName}
+            setAdminNewName={setAdminNewName}
+            adminNewMovie={adminNewMovie}
+            setAdminNewMovie={setAdminNewMovie}
+            adminNewUrl={adminNewUrl}
+            setAdminNewUrl={setAdminNewUrl}
+            adminPassword={adminPassword}
+            setAdminPassword={setAdminPassword}
+            adminError={adminError}
+            handleAdminUpdate={handleAdminUpdate}
+            setIsAdminPanelOpen={setIsAdminPanelOpen}
+        />}
         <div className="lobby-container">
             <div className="lobby-header">
                 <h1>Bienvenido al Cine Virtual 🍿</h1>
