@@ -135,6 +135,73 @@ const AppStyles = () => (
     .modal-inputs select { width: 100%; }
     .admin-error-message { color: var(--danger-color); margin-top: 15px; min-height: 20px; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+    .header-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .admin-button, .stats-button {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 10px;
+      border-radius: 50%;
+      transition: background 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .admin-button:hover, .stats-button:hover {
+      background: var(--border-color);
+    }
+    .stats-button svg { width: 24px; height: 24px; fill: var(--primary-accent); }
+    .admin-button svg { width: 24px; height: 24px; fill: var(--secondary-text-color); }
+    @media (max-width: 768px) {
+      .header-buttons { justify-content: center; gap: 18px; }
+      .admin-button, .stats-button { padding: 8px; }
+    }
+    .modal-content.admin-modal-content {
+      max-width: 340px;
+      min-width: 220px;
+      width: 90vw;
+      padding: 24px 18px 18px 18px;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      position: fixed;
+      background: var(--background-color);
+      border-radius: 12px;
+      box-shadow: 0 2px 16px #0008;
+      z-index: 1002;
+      overflow-y: auto;
+      max-height: 90vh;
+    }
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 1001;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-inputs label {
+      margin-top: 10px;
+      font-size: 0.95em;
+      color: var(--secondary-text-color);
+    }
+    .modal-inputs input, .modal-inputs select {
+      width: 100%;
+      margin-bottom: 8px;
+      padding: 7px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      background: var(--background-color);
+      color: var(--primary-text-color);
+    }
+    .admin-error-message { color: #e74c3c; font-size: 0.95em; text-align: center; margin: 8px 0; }
     @media (max-width: 768px) {
         .user-list-section { display: none; } .chat-section { border-right: none; }
         h1 { font-size: 1.2rem; }
@@ -145,96 +212,39 @@ const AppStyles = () => (
 );
 
 // **NUEVO**: Panel de Admin como un componente separado para evitar re-renderizados indeseados
+// Panel de configuración (admin) simplificado y más pequeño
 const AdminPanel = ({ 
     predefinedRooms, 
     adminSelectedRoomId, setAdminSelectedRoomId,
     adminNewName, setAdminNewName,
-    adminNewMovie, setAdminNewMovie,
     adminNewUrl, setAdminNewUrl,
     adminPassword, setAdminPassword,
     adminError,
     handleAdminUpdate,
     setIsAdminPanelOpen 
 }) => {
-    // Cargar datos de la sala seleccionada en el formulario de admin
-    useEffect(() => {
-        if (predefinedRooms[adminSelectedRoomId]) {
-            const room = predefinedRooms[adminSelectedRoomId];
-            setAdminNewName(room.name);
-            setAdminNewMovie(room.movie);
-            setAdminNewUrl(room.videoUrl);
-        }
-    }, [adminSelectedRoomId, predefinedRooms, setAdminNewName, setAdminNewMovie, setAdminNewUrl]);
-
-    const [roomStatus, setRoomStatus] = useState({});
-    const [statusError, setStatusError] = useState('');
-    const intervalRef = useRef(null);
-
-    useEffect(() => {
-        // Usar la instancia de socket importada (no window.socket)
-        if (!io || !io.connect) return;
-        let isMounted = true;
-        function fetchStatus() {
-            try {
-                socket.emit('admin-request-room-status', adminPassword);
-            } catch (e) {
-                setStatusError('No se pudo conectar con el servidor.');
-            }
-        }
-        fetchStatus();
-        intervalRef.current = setInterval(fetchStatus, 5000);
-        function handleStatus(data) {
-            if (!isMounted) return;
-            if (data.error) setStatusError(data.error);
-            else { setRoomStatus(data); setStatusError(''); }
-        }
-        socket.on('admin-room-status', handleStatus);
-        return () => {
-            isMounted = false;
-            clearInterval(intervalRef.current);
-            socket.off('admin-room-status', handleStatus);
-        };
-    }, [adminPassword]);
-
     return (
         <div className="modal-overlay">
-            <div className="modal-content">
-                <h2>Panel de Administrador</h2>
+            <div className="modal-content admin-modal-content">
+                <h2>Configurar Sala</h2>
                 <div className="modal-inputs">
-                    <label htmlFor="room-select">Seleccionar Sala</label>
-                    <select id="room-select" value={adminSelectedRoomId} onChange={e => setAdminSelectedRoomId(e.target.value)} className="generic-input">
-                        {Object.entries(predefinedRooms).map(([id, room]) => (
-                            <option key={id} value={id}>{room.name} - {room.movie}</option>
+                    <label>Número de sala:</label>
+                    <select value={adminSelectedRoomId} onChange={e => setAdminSelectedRoomId(e.target.value)}>
+                        {Object.keys(predefinedRooms).map(roomId => (
+                            <option key={roomId} value={roomId}>{roomId}</option>
                         ))}
                     </select>
-                    <label htmlFor="room-name">Nombre de la Sala</label>
-                    <input id="room-name" type="text" value={adminNewName} onChange={e => setAdminNewName(e.target.value)} className="generic-input"/>
-                    <label htmlFor="movie-name">Nombre de la Película</label>
-                    <input id="movie-name" type="text" value={adminNewMovie} onChange={e => setAdminNewMovie(e.target.value)} className="generic-input"/>
-                    <label htmlFor="video-url">URL del Video</label>
-                    <input id="video-url" type="text" value={adminNewUrl} onChange={e => setAdminNewUrl(e.target.value)} className="generic-input"/>
-                    <label htmlFor="admin-pass">Contraseña de Admin</label>
-                    <input id="admin-pass" type="password" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} className="generic-input" placeholder="Contraseña secreta"/>
+                    <label>Nombre:</label>
+                    <input type="text" className="generic-input" value={adminNewName} onChange={e => setAdminNewName(e.target.value)} />
+                    <label>Link de la película:</label>
+                    <input type="text" className="generic-input" value={adminNewUrl} onChange={e => setAdminNewUrl(e.target.value)} />
+                    <label>Contraseña de admin:</label>
+                    <input type="password" className="generic-input" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} />
                 </div>
                 <p className="admin-error-message">{adminError}</p>
                 <div style={{display: 'flex', gap: '10px', justifyContent: 'center'}}>
-                    <button onClick={handleAdminUpdate}>Guardar Cambios</button>
+                    <button onClick={handleAdminUpdate}>Guardar</button>
                     <button onClick={() => setIsAdminPanelOpen(false)} style={{backgroundColor: 'var(--secondary-text-color)'}}>Cancelar</button>
-                </div>
-                <hr style={{margin: '20px 0'}} />
-                <h3>Estado de Salas en Tiempo Real</h3>
-                {statusError && <div style={{color:'red'}}>{statusError}</div>}
-                <div style={{maxHeight: 300, overflowY: 'auto'}}>
-                  {Object.entries(roomStatus).map(([id, status]) => (
-                    <div key={id} style={{border: '1px solid #444', borderRadius: 8, margin: '10px 0', padding: 10}}>
-                      <b>{status.name}</b> <span style={{color:'#888'}}>({id})</span><br/>
-                      Película: <b>{status.movie}</b><br/>
-                      Usuarios conectados: {status.users.length > 0 ? status.users.map(u => u.name).join(', ') : 'Ninguno'}<br/>
-                      Tiempo actual: {status.videoState.currentTime ? status.videoState.currentTime.toFixed(1) + 's' : '0s'}<br/>
-                      Estado: {status.videoState.isPlaying ? 'Reproduciendo' : 'Pausado'}<br/>
-                      Último en pausar: {status.lastPausedBy || 'Nadie'}
-                    </div>
-                  ))}
                 </div>
             </div>
         </div>
@@ -447,8 +457,6 @@ function App() {
             setAdminSelectedRoomId={setAdminSelectedRoomId}
             adminNewName={adminNewName}
             setAdminNewName={setAdminNewName}
-            adminNewMovie={adminNewMovie}
-            setAdminNewMovie={setAdminNewMovie}
             adminNewUrl={adminNewUrl}
             setAdminNewUrl={setAdminNewUrl}
             adminPassword={adminPassword}
