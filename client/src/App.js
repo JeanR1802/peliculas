@@ -169,18 +169,28 @@ const AdminPanel = ({
     const intervalRef = useRef(null);
 
     useEffect(() => {
+        // Usar la instancia de socket importada (no window.socket)
+        if (!io || !io.connect) return;
+        let isMounted = true;
         function fetchStatus() {
-            window.socket.emit('admin-request-room-status', adminPassword);
+            try {
+                socket.emit('admin-request-room-status', adminPassword);
+            } catch (e) {
+                setStatusError('No se pudo conectar con el servidor.');
+            }
         }
         fetchStatus();
         intervalRef.current = setInterval(fetchStatus, 5000);
-        window.socket.on('admin-room-status', (data) => {
+        function handleStatus(data) {
+            if (!isMounted) return;
             if (data.error) setStatusError(data.error);
             else { setRoomStatus(data); setStatusError(''); }
-        });
+        }
+        socket.on('admin-room-status', handleStatus);
         return () => {
+            isMounted = false;
             clearInterval(intervalRef.current);
-            window.socket.off('admin-room-status');
+            socket.off('admin-room-status', handleStatus);
         };
     }, [adminPassword]);
 
