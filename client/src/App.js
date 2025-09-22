@@ -208,116 +208,193 @@ const AppStyles = () => (
         .header-buttons { justify-content: center; gap: 18px; }
         .admin-button, .stats-button { padding: 8px; }
     }
+    .admin-sidebar-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 1001;
+      display: flex;
+      align-items: stretch;
+      justify-content: flex-end;
+    }
+    .admin-sidebar {
+      width: 340px;
+      max-width: 95vw;
+      background: var(--background-color);
+      height: 100vh;
+      box-shadow: -2px 0 16px #0008;
+      display: flex;
+      flex-direction: column;
+      padding: 0 0 0 0;
+      position: relative;
+      animation: slideInSidebar 0.2s;
+    }
+    @keyframes slideInSidebar {
+      from { transform: translateX(100%); }
+      to { transform: translateX(0); }
+    }
+    .admin-sidebar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 18px 0 18px;
+    }
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 2rem;
+      color: var(--secondary-text-color);
+      cursor: pointer;
+      margin-left: 10px;
+    }
+    .admin-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border-color);
+      margin: 0 18px;
+    }
+    .admin-tabs button {
+      flex: 1;
+      background: none;
+      border: none;
+      padding: 12px 0;
+      font-size: 1.05em;
+      cursor: pointer;
+      color: var(--secondary-text-color);
+      border-bottom: 2px solid transparent;
+      transition: border 0.2s, color 0.2s;
+    }
+    .admin-tabs button.active {
+      color: var(--primary-accent);
+      border-bottom: 2px solid var(--primary-accent);
+      font-weight: bold;
+    }
+    .admin-tab-content {
+      padding: 18px;
+      flex: 1;
+      overflow-y: auto;
+    }
+    @media (max-width: 600px) {
+      .admin-sidebar { width: 100vw; max-width: 100vw; }
+      .admin-sidebar-header { padding: 12px 10px 0 10px; }
+      .admin-tabs { margin: 0 10px; }
+      .admin-tab-content { padding: 10px; }
+    }
   `}</style>
 );
 
 // **NUEVO**: Panel de Admin como un componente separado para evitar re-renderizados indeseados
-// Panel de configuración (admin) simplificado y más pequeño
-const AdminPanel = ({ 
-    predefinedRooms, 
-    adminSelectedRoomId, setAdminSelectedRoomId,
-    adminNewName, setAdminNewName,
-    adminNewUrl, setAdminNewUrl,
-    adminPassword, setAdminPassword,
-    adminError,
-    handleAdminUpdate,
-    setIsAdminPanelOpen 
+// Sidebar de administración con tabs
+const AdminSidebar = ({
+  predefinedRooms,
+  adminSelectedRoomId, setAdminSelectedRoomId,
+  adminNewName, setAdminNewName,
+  adminNewMovie, setAdminNewMovie,
+  adminNewUrl, setAdminNewUrl,
+  adminPassword, setAdminPassword,
+  adminError,
+  handleAdminUpdate,
+  setIsAdminPanelOpen
 }) => {
-    return (
-        <div className="modal-overlay">
-            <div className="modal-content admin-modal-content">
-                <h2>Configurar Sala</h2>
-                <div className="modal-inputs">
-                    <label>Número de sala:</label>
-                    <select value={adminSelectedRoomId} onChange={e => setAdminSelectedRoomId(e.target.value)}>
-                        {Object.keys(predefinedRooms).map(roomId => (
-                            <option key={roomId} value={roomId}>{roomId}</option>
-                        ))}
-                    </select>
-                    <label>Nombre:</label>
-                    <input type="text" className="generic-input" value={adminNewName} onChange={e => setAdminNewName(e.target.value)} />
-                    <label>Link de la película:</label>
-                    <input type="text" className="generic-input" value={adminNewUrl} onChange={e => setAdminNewUrl(e.target.value)} />
-                    <label>Contraseña de admin:</label>
-                    <input type="password" className="generic-input" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} />
-                </div>
-                <p className="admin-error-message">{adminError}</p>
-                <div style={{display: 'flex', gap: '10px', justifyContent: 'center'}}>
-                    <button onClick={handleAdminUpdate}>Guardar</button>
-                    <button onClick={() => setIsAdminPanelOpen(false)} style={{backgroundColor: 'var(--secondary-text-color)'}}>Cancelar</button>
-                </div>
-            </div>
+  const [activeTab, setActiveTab] = useState('estadisticas');
+  // Estado para estadísticas
+  const [roomStatus, setRoomStatus] = useState({});
+  const [statusError, setStatusError] = useState('');
+  const [backendStatus, setBackendStatus] = useState('Desconocido');
+  const [statsPassword, setStatsPassword] = useState('');
+  const [statsPasswordOk, setStatsPasswordOk] = useState(false);
+  const intervalRef = useRef(null);
+
+  useEffect(() => {
+    if (activeTab !== 'estadisticas' || !statsPasswordOk) return;
+    let isMounted = true;
+    function fetchStatus() {
+      fetch('/ping').then(() => setBackendStatus('Despierto')).catch(() => setBackendStatus('Dormido/Desconectado'));
+      try {
+        socket.emit('admin-request-room-status', statsPassword);
+      } catch (e) {
+        setStatusError('No se pudo conectar con el servidor.');
+      }
+    }
+    fetchStatus();
+    intervalRef.current = setInterval(fetchStatus, 5000);
+    function handleStatus(data) {
+      if (!isMounted) return;
+      if (data.error) setStatusError(data.error);
+      else { setRoomStatus(data); setStatusError(''); }
+    }
+    socket.on('admin-room-status', handleStatus);
+    return () => {
+      isMounted = false;
+      clearInterval(intervalRef.current);
+      socket.off('admin-room-status', handleStatus);
+    };
+  }, [activeTab, statsPassword, statsPasswordOk]);
+
+  return (
+    <div className="admin-sidebar-overlay">
+      <div className="admin-sidebar">
+        <div className="admin-sidebar-header">
+          <h2>Administración</h2>
+          <button className="close-btn" onClick={() => setIsAdminPanelOpen(false)}>&times;</button>
         </div>
-    );
-};
-
-// Componente de Estadísticas
-const StatsPanel = ({ setIsStatsPanelOpen }) => {
-    const [roomStatus, setRoomStatus] = useState({});
-    const [statusError, setStatusError] = useState('');
-    const [backendStatus, setBackendStatus] = useState('Desconocido');
-    const [adminPassword, setAdminPassword] = useState('');
-    const [passwordOk, setPasswordOk] = useState(false);
-    const intervalRef = useRef(null);
-
-    useEffect(() => {
-        if (!passwordOk) return;
-        let isMounted = true;
-        function fetchStatus() {
-            fetch('/ping').then(() => setBackendStatus('Despierto')).catch(() => setBackendStatus('Dormido/Desconectado'));
-            try {
-                socket.emit('admin-request-room-status', adminPassword);
-            } catch (e) {
-                setStatusError('No se pudo conectar con el servidor.');
-            }
-        }
-        fetchStatus();
-        intervalRef.current = setInterval(fetchStatus, 5000);
-        function handleStatus(data) {
-            if (!isMounted) return;
-            if (data.error) setStatusError(data.error);
-            else { setRoomStatus(data); setStatusError(''); }
-        }
-        socket.on('admin-room-status', handleStatus);
-        return () => {
-            isMounted = false;
-            clearInterval(intervalRef.current);
-            socket.off('admin-room-status', handleStatus);
-        };
-    }, [adminPassword, passwordOk]);
-
-    return (
-        <div className="modal-overlay">
-            <div className="modal-content">
-                <h2>Estadísticas en Tiempo Real</h2>
+        <div className="admin-tabs">
+          <button className={activeTab === 'estadisticas' ? 'active' : ''} onClick={() => setActiveTab('estadisticas')}>Estadísticas</button>
+          <button className={activeTab === 'salas' ? 'active' : ''} onClick={() => setActiveTab('salas')}>Salas</button>
+        </div>
+        <div className="admin-tab-content">
+          {activeTab === 'estadisticas' ? (
+            !statsPasswordOk ? (
+              <div style={{marginBottom: 20}}>
+                <input type="password" className="generic-input" placeholder="Contraseña de admin" value={statsPassword} onChange={e => setStatsPassword(e.target.value)} />
+                <button style={{marginTop:10}} onClick={() => setStatsPasswordOk(true)}>Ver estadísticas</button>
+              </div>
+            ) : statusError && statusError.includes('Contraseña') ? (
+              <div style={{color:'red', marginBottom: 20}}>{statusError}<br/><button onClick={()=>{setStatsPasswordOk(false);setStatsPassword('');}}>Reintentar</button></div>
+            ) : (
+              <div style={{maxHeight: '60vh', overflowY: 'auto'}}>
                 <div style={{marginBottom: 10}}>Estado del backend: <b style={{color: backendStatus === 'Despierto' ? 'green' : 'red'}}>{backendStatus}</b></div>
-                {!passwordOk ? (
-                  <div style={{marginBottom: 20}}>
-                    <input type="password" className="generic-input" placeholder="Contraseña de admin" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} />
-                    <button style={{marginTop:10}} onClick={() => setPasswordOk(true)}>Ver estadísticas</button>
+                {Object.entries(roomStatus).map(([id, status]) => (
+                  <div key={id} style={{border: '1px solid #444', borderRadius: 8, margin: '10px 0', padding: 10}}>
+                    <b>{status.name}</b> <span style={{color:'#888'}}>({id})</span><br/>
+                    Película: <b>{status.movie}</b><br/>
+                    Usuarios conectados: {status.users.length > 0 ? status.users.map(u => u.name).join(', ') : 'Ninguno'}<br/>
+                    Tiempo actual: {status.videoState.currentTime ? status.videoState.currentTime.toFixed(1) + 's' : '0s'}<br/>
+                    Estado: {status.videoState.isPlaying ? 'Reproduciendo' : 'Pausado'}<br/>
+                    Último en pausar: {status.lastPausedBy || 'Nadie'}
                   </div>
-                ) : statusError && statusError.includes('Contraseña') ? (
-                  <div style={{color:'red', marginBottom: 20}}>{statusError}<br/><button onClick={()=>{setPasswordOk(false);setAdminPassword('');}}>Reintentar</button></div>
-                ) : (
-                  <div style={{maxHeight: 350, overflowY: 'auto'}}>
-                    {Object.entries(roomStatus).map(([id, status]) => (
-                      <div key={id} style={{border: '1px solid #444', borderRadius: 8, margin: '10px 0', padding: 10}}>
-                        <b>{status.name}</b> <span style={{color:'#888'}}>({id})</span><br/>
-                        Película: <b>{status.movie}</b><br/>
-                        Usuarios conectados: {status.users.length > 0 ? status.users.map(u => u.name).join(', ') : 'Ninguno'}<br/>
-                        Tiempo actual: {status.videoState.currentTime ? status.videoState.currentTime.toFixed(1) + 's' : '0s'}<br/>
-                        Estado: {status.videoState.isPlaying ? 'Reproduciendo' : 'Pausado'}<br/>
-                        Último en pausar: {status.lastPausedBy || 'Nadie'}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <button style={{marginTop:20}} onClick={() => setIsStatsPanelOpen(false)}>Cerrar</button>
+                ))}
+              </div>
+            )
+          ) : (
+            <div className="modal-inputs">
+              <label>Número de sala:</label>
+              <select value={adminSelectedRoomId} onChange={e => setAdminSelectedRoomId(e.target.value)}>
+                {Object.keys(predefinedRooms).map(roomId => (
+                  <option key={roomId} value={roomId}>{roomId}</option>
+                ))}
+              </select>
+              <label>Nombre de la sala:</label>
+              <input type="text" className="generic-input" value={adminNewName} onChange={e => setAdminNewName(e.target.value)} />
+              <label>Nombre de la película:</label>
+              <input type="text" className="generic-input" value={adminNewMovie} onChange={e => setAdminNewMovie(e.target.value)} />
+              <label>Link de la película:</label>
+              <input type="text" className="generic-input" value={adminNewUrl} onChange={e => setAdminNewUrl(e.target.value)} />
+              <label>Contraseña de admin:</label>
+              <input type="password" className="generic-input" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} />
+              <p className="admin-error-message">{adminError}</p>
+              <div style={{display: 'flex', gap: '10px', justifyContent: 'center', marginTop: 10}}>
+                <button onClick={handleAdminUpdate}>Guardar</button>
+                <button onClick={() => setIsAdminPanelOpen(false)} style={{backgroundColor: 'var(--secondary-text-color)'}}>Cancelar</button>
+              </div>
             </div>
+          )}
         </div>
-    );
+      </div>
+    </div>
+  );
 };
 
+// Componente principal
 function App() {
   const [predefinedRooms, setPredefinedRooms] = useState({});
   const [selectedRoom, setSelectedRoom] = useState(null);
@@ -446,17 +523,18 @@ function App() {
   };
 
   // --- Renderizado Condicional ---
-
   if (!selectedRoom) {
     return (
       <>
         <AppStyles />
-        {isAdminPanelOpen && <AdminPanel 
+        {isAdminPanelOpen && <AdminSidebar
             predefinedRooms={predefinedRooms}
             adminSelectedRoomId={adminSelectedRoomId}
             setAdminSelectedRoomId={setAdminSelectedRoomId}
             adminNewName={adminNewName}
             setAdminNewName={setAdminNewName}
+            adminNewMovie={adminNewMovie}
+            setAdminNewMovie={setAdminNewMovie}
             adminNewUrl={adminNewUrl}
             setAdminNewUrl={setAdminNewUrl}
             adminPassword={adminPassword}
@@ -465,15 +543,11 @@ function App() {
             handleAdminUpdate={handleAdminUpdate}
             setIsAdminPanelOpen={setIsAdminPanelOpen}
         />}
-        {isStatsPanelOpen && <StatsPanel setIsStatsPanelOpen={setIsStatsPanelOpen} />}
         <div className="lobby-container">
             <div className="lobby-header">
                 <div className="header-buttons">
                   <button className="admin-button" onClick={() => setIsAdminPanelOpen(true)} title="Configuración">
                     <svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.44,0.17-0.48,0.41L9.2,5.77C8.61,6.01,8.08,6.33,7.58,6.71L5.19,5.75C4.97,5.68,4.72,5.75,4.6,5.97L2.68,9.29 c-0.11,0.2-0.06,0.47,0.12,0.61l2.03,1.58C4.78,11.69,4.76,12,4.76,12.31c0,0.31,0.02,0.62,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.04,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.48-0.41l0.36-2.54c0.59-0.24,1.12-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0.01,0.59-0.22l1.92-3.32c0.11-0.2,0.06-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg>
-                  </button>
-                  <button className="stats-button" onClick={() => setIsStatsPanelOpen(true)} title="Estadísticas">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 21V10M12 21V3M19 21V14" stroke="#3392ff" strokeWidth="2" strokeLinecap="round"/></svg>
                   </button>
                 </div>
                 <h1>Bienvenido al Cine Virtual 🍿</h1>
@@ -520,18 +594,12 @@ function App() {
   return (
     <>
       <AppStyles />
-      {isStatsPanelOpen && <StatsPanel setIsStatsPanelOpen={setIsStatsPanelOpen} />}
       <div className="App" style={{ height: appHeight }}>
         <div className="video-section">
           <div className="header-and-input">
             <div className="header-section">
               <h1>{selectedRoom.name}</h1>
               <p className="room-info">Película: <b>{selectedRoom.movie}</b> | Usuario: <b>{username}</b></p>
-            </div>
-            <div className="header-buttons">
-              <button className="stats-button" onClick={() => setIsStatsPanelOpen(true)} title="Estadísticas">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 21V10M12 21V3M19 21V14" stroke="#3392ff" strokeWidth="2" strokeLinecap="round"/></svg>
-              </button>
             </div>
           </div>
           <div className="video-wrapper">
