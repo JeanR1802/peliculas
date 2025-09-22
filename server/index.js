@@ -189,6 +189,13 @@ io.on('connection', (socket) => {
       // Guardar quién pausó
       const user = (roomUsers[roomId] || []).find(u => u.id === socket.id);
       lastPausedBy[roomId] = user ? user.name : 'Desconocido';
+      // Enviar mensaje de chat personalizado
+      io.in(roomId).emit('chat-message', {
+        username: 'Sistema',
+        message: `Pausado por ${user ? user.name : 'Desconocido'}`,
+        timestamp: Date.now(),
+        isSystem: true
+      });
     }
     socket.to(roomId).emit('receive-pause', currentTime);
   });
@@ -295,6 +302,13 @@ io.on('connection', (socket) => {
             roomStates[roomId].isPlaying = false;
             saveRoomStates();
             lastPausedBy[roomId] = 'Backend (sala vacía)';
+            // Mensaje de chat por pausa del sistema
+            io.in(roomId).emit('chat-message', {
+              username: 'Sistema',
+              message: 'Pausado por el sistema (sala vacía)',
+              timestamp: Date.now(),
+              isSystem: true
+            });
           }
           delete roomUsers[roomId];
         }

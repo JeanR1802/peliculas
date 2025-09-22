@@ -138,6 +138,8 @@ const AppStyles = () => (
     @media (max-width: 768px) {
         .user-list-section { display: none; } .chat-section { border-right: none; }
         h1 { font-size: 1.2rem; }
+        .header-buttons { justify-content: center; gap: 18px; }
+        .admin-button, .stats-button { padding: 8px; }
     }
   `}</style>
 );
@@ -240,16 +242,18 @@ const AdminPanel = ({
 };
 
 // Componente de Estadísticas
-const StatsPanel = ({ adminPassword, setIsStatsPanelOpen }) => {
+const StatsPanel = ({ setIsStatsPanelOpen }) => {
     const [roomStatus, setRoomStatus] = useState({});
     const [statusError, setStatusError] = useState('');
     const [backendStatus, setBackendStatus] = useState('Desconocido');
+    const [adminPassword, setAdminPassword] = useState('');
+    const [passwordOk, setPasswordOk] = useState(false);
     const intervalRef = useRef(null);
 
     useEffect(() => {
+        if (!passwordOk) return;
         let isMounted = true;
         function fetchStatus() {
-            // Verificar backend
             fetch('/ping').then(() => setBackendStatus('Despierto')).catch(() => setBackendStatus('Dormido/Desconectado'));
             try {
                 socket.emit('admin-request-room-status', adminPassword);
@@ -270,26 +274,34 @@ const StatsPanel = ({ adminPassword, setIsStatsPanelOpen }) => {
             clearInterval(intervalRef.current);
             socket.off('admin-room-status', handleStatus);
         };
-    }, [adminPassword]);
+    }, [adminPassword, passwordOk]);
 
     return (
         <div className="modal-overlay">
             <div className="modal-content">
                 <h2>Estadísticas en Tiempo Real</h2>
                 <div style={{marginBottom: 10}}>Estado del backend: <b style={{color: backendStatus === 'Despierto' ? 'green' : 'red'}}>{backendStatus}</b></div>
-                {statusError && <div style={{color:'red'}}>{statusError}</div>}
-                <div style={{maxHeight: 350, overflowY: 'auto'}}>
-                  {Object.entries(roomStatus).map(([id, status]) => (
-                    <div key={id} style={{border: '1px solid #444', borderRadius: 8, margin: '10px 0', padding: 10}}>
-                      <b>{status.name}</b> <span style={{color:'#888'}}>({id})</span><br/>
-                      Película: <b>{status.movie}</b><br/>
-                      Usuarios conectados: {status.users.length > 0 ? status.users.map(u => u.name).join(', ') : 'Ninguno'}<br/>
-                      Tiempo actual: {status.videoState.currentTime ? status.videoState.currentTime.toFixed(1) + 's' : '0s'}<br/>
-                      Estado: {status.videoState.isPlaying ? 'Reproduciendo' : 'Pausado'}<br/>
-                      Último en pausar: {status.lastPausedBy || 'Nadie'}
-                    </div>
-                  ))}
-                </div>
+                {!passwordOk ? (
+                  <div style={{marginBottom: 20}}>
+                    <input type="password" className="generic-input" placeholder="Contraseña de admin" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} />
+                    <button style={{marginTop:10}} onClick={() => setPasswordOk(true)}>Ver estadísticas</button>
+                  </div>
+                ) : statusError && statusError.includes('Contraseña') ? (
+                  <div style={{color:'red', marginBottom: 20}}>{statusError}<br/><button onClick={()=>{setPasswordOk(false);setAdminPassword('');}}>Reintentar</button></div>
+                ) : (
+                  <div style={{maxHeight: 350, overflowY: 'auto'}}>
+                    {Object.entries(roomStatus).map(([id, status]) => (
+                      <div key={id} style={{border: '1px solid #444', borderRadius: 8, margin: '10px 0', padding: 10}}>
+                        <b>{status.name}</b> <span style={{color:'#888'}}>({id})</span><br/>
+                        Película: <b>{status.movie}</b><br/>
+                        Usuarios conectados: {status.users.length > 0 ? status.users.map(u => u.name).join(', ') : 'Ninguno'}<br/>
+                        Tiempo actual: {status.videoState.currentTime ? status.videoState.currentTime.toFixed(1) + 's' : '0s'}<br/>
+                        Estado: {status.videoState.isPlaying ? 'Reproduciendo' : 'Pausado'}<br/>
+                        Último en pausar: {status.lastPausedBy || 'Nadie'}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <button style={{marginTop:20}} onClick={() => setIsStatsPanelOpen(false)}>Cerrar</button>
             </div>
         </div>
@@ -445,17 +457,19 @@ function App() {
             handleAdminUpdate={handleAdminUpdate}
             setIsAdminPanelOpen={setIsAdminPanelOpen}
         />}
-        {isStatsPanelOpen && <StatsPanel adminPassword={adminPassword} setIsStatsPanelOpen={setIsStatsPanelOpen} />}
+        {isStatsPanelOpen && <StatsPanel setIsStatsPanelOpen={setIsStatsPanelOpen} />}
         <div className="lobby-container">
             <div className="lobby-header">
+                <div className="header-buttons">
+                  <button className="admin-button" onClick={() => setIsAdminPanelOpen(true)} title="Configuración">
+                    <svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.44,0.17-0.48,0.41L9.2,5.77C8.61,6.01,8.08,6.33,7.58,6.71L5.19,5.75C4.97,5.68,4.72,5.75,4.6,5.97L2.68,9.29 c-0.11,0.2-0.06,0.47,0.12,0.61l2.03,1.58C4.78,11.69,4.76,12,4.76,12.31c0,0.31,0.02,0.62,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.04,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.48-0.41l0.36-2.54c0.59-0.24,1.12-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0.01,0.59-0.22l1.92-3.32c0.11-0.2,0.06-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg>
+                  </button>
+                  <button className="stats-button" onClick={() => setIsStatsPanelOpen(true)} title="Estadísticas">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 21V10M12 21V3M19 21V14" stroke="#3392ff" strokeWidth="2" strokeLinecap="round"/></svg>
+                  </button>
+                </div>
                 <h1>Bienvenido al Cine Virtual 🍿</h1>
                 <p>Selecciona una sala para entrar</p>
-                <button className="admin-button" onClick={() => setIsAdminPanelOpen(true)}>
-                    <svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.44,0.17-0.48,0.41L9.2,5.77C8.61,6.01,8.08,6.33,7.58,6.71L5.19,5.75C4.97,5.68,4.72,5.75,4.6,5.97L2.68,9.29 c-0.11,0.2-0.06,0.47,0.12,0.61l2.03,1.58C4.78,11.69,4.76,12,4.76,12.31c0,0.31,0.02,0.62,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.04,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.48-0.41l0.36-2.54c0.59-0.24,1.12-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0.01,0.59-0.22l1.92-3.32c0.11-0.2,0.06-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg>
-                </button>
-                <button className="stats-button" onClick={() => setIsStatsPanelOpen(true)} style={{marginLeft: 10}} title="Estadísticas">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 21V10M12 21V3M19 21V14" stroke="#8b949e" strokeWidth="2" strokeLinecap="round"/></svg>
-                </button>
             </div>
             <div className="room-selection-container">
                 {Object.entries(predefinedRooms).map(([id, room]) => (
@@ -498,7 +512,7 @@ function App() {
   return (
     <>
       <AppStyles />
-      {isStatsPanelOpen && <StatsPanel adminPassword={adminPassword} setIsStatsPanelOpen={setIsStatsPanelOpen} />}
+      {isStatsPanelOpen && <StatsPanel setIsStatsPanelOpen={setIsStatsPanelOpen} />}
       <div className="App" style={{ height: appHeight }}>
         <div className="video-section">
           <div className="header-and-input">
@@ -506,9 +520,11 @@ function App() {
               <h1>{selectedRoom.name}</h1>
               <p className="room-info">Película: <b>{selectedRoom.movie}</b> | Usuario: <b>{username}</b></p>
             </div>
-            <button className="stats-button" onClick={() => setIsStatsPanelOpen(true)} style={{marginLeft: 10}} title="Estadísticas">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 21V10M12 21V3M19 21V14" stroke="#8b949e" strokeWidth="2" strokeLinecap="round"/></svg>
-            </button>
+            <div className="header-buttons">
+              <button className="stats-button" onClick={() => setIsStatsPanelOpen(true)} title="Estadísticas">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 21V10M12 21V3M19 21V14" stroke="#3392ff" strokeWidth="2" strokeLinecap="round"/></svg>
+              </button>
+            </div>
           </div>
           <div className="video-wrapper">
             <video ref={playerRef} controls src={videoUrl} onPlay={handlePlay} onPause={handlePause} onSeeked={handleSeeked} />
