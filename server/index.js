@@ -2,8 +2,6 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require("socket.io");
-const fs = require('fs');
-const path = require('path');
 const admin = require('firebase-admin');
 
 // --- INICIALIZACIÓN DE FIREBASE ---
@@ -16,6 +14,7 @@ admin.initializeApp({
 
 const db = admin.database();
 const roomsRef = db.ref('rooms');
+const roomStatesRef = db.ref('roomStates'); // <-- NUEVA REFERENCIA
 // --- FIN DE INICIALIZACIÓN DE FIREBASE ---
 
 // Creamos el servidor
@@ -23,7 +22,7 @@ const app = express();
 const server = http.createServer(app);
 
 // **NUEVO**: Contraseña secreta para acciones de administrador
-const ADMIN_SECRET = 'supersecreto123'; // ¡Cambia esto por una contraseña más segura!
+const ADMIN_SECRET = process.env.ADMIN_SECRET;
 
 // Configuramos socket.io con CORS
 const io = new Server(server, {
@@ -47,39 +46,41 @@ const DEFAULT_ROOMS = {
   'sala-6': { name: 'Sala 6', movie: '', videoUrl: '' },
 };
 
-// Almacena el estado actual del video por sala (persistente mientras el servidor viva)
-const roomStates = {}; 
 // Almacena los usuarios conectados por sala
 const roomUsers = {};
 // Guardar quién pausó la sala
 const lastPausedBy = {};
 
-const ROOM_STATES_FILE = path.join(__dirname, 'roomStates.json');
+// --- Variables de estado globales ---
+let PREDEFINED_ROOMS;
+let roomStates;
 
-// Cargar estado persistente de las salas al iniciar
-function loadRoomStates() {
-  if (fs.existsSync(ROOM_STATES_FILE)) {
-    try {
-      const data = fs.readFileSync(ROOM_STATES_FILE, 'utf8');
-      const parsed = JSON.parse(data);
-      Object.assign(roomStates, parsed);
-      console.log('Estado de salas restaurado desde roomStates.json');
-    } catch (e) {
-      console.error('Error al leer roomStates.json:', e);
-    }
-  }
-}
-
-// Guardar estado persistente de las salas
-function saveRoomStates() {
+// --- NUEVAS FUNCIONES DE FIREBASE PARA ESTADO ---
+async function loadRoomStates() {
   try {
-    fs.writeFileSync(ROOM_STATES_FILE, JSON.stringify(roomStates, null, 2), 'utf8');
+    const snapshot = await roomStatesRef.once('value');
+    if (snapshot.exists()) {
+      roomStates = snapshot.val();
+      console.log('Estados de reproducción restaurados desde Firebase.');
+    } else {
+      roomStates = {};
+      console.log('No hay estados de reproducción en Firebase. Inicializando objeto vacío.');
+    }
   } catch (e) {
-    console.error('Error al guardar roomStates.json:', e);
+    console.error('Error al cargar estados de reproducción desde Firebase:', e);
+    roomStates = {};
   }
 }
 
-// --- NUEVAS FUNCIONES DE FIREBASE ---
+async function saveRoomStates() {
+  try {
+    await roomStatesRef.set(roomStates);
+  } catch (e) {
+    console.error('Error al guardar estados de reproducción en Firebase:', e);
+  }
+}
+
+// --- FUNCIONES DE FIREBASE PARA SALAS ---
 async function loadRooms() {
   try {
     const snapshot = await roomsRef.once('value');
@@ -104,10 +105,6 @@ async function saveRooms() {
     console.error('Error al guardar salas en Firebase:', e);
   }
 }
-// --- FIN DE NUEVAS FUNCIONES ---
-
-// Variable para almacenar las salas cargadas
-let PREDEFINED_ROOMS;
 
 const PORT = process.env.PORT || 3001;
 
@@ -139,8 +136,13 @@ app.get('/ping', (req, res) => res.send('pong'));
 // --- FUNCIÓN PRINCIPAL DE ARRANQUE ---
 async function startServer() {
   
+  if (!ADMIN_SECRET) {
+    console.error("FATAL ERROR: La variable de entorno ADMIN_SECRET no está definida.");
+    process.exit(1); // Detiene el servidor si la contraseña no está configurada
+  }
+
   PREDEFINED_ROOMS = await loadRooms();
-  loadRoomStates();
+  await loadRoomStates();
 
   io.on('connection', (socket) => {
     console.log(`Usuario Conectado: ${socket.id}`);
@@ -149,16 +151,13 @@ async function startServer() {
 
     socket.on('join-room', ({ roomId, username }) => {
       if (!PREDEFINED_ROOMS[roomId]) {
-        console.log(`Intento de unirse a sala inexistente: ${roomId}`);
-        return; 
+        return;
       }
       
       socket.join(roomId);
       console.log(`Usuario ${username} (${socket.id}) se unió a la sala: ${roomId}`);
 
-      if (!roomUsers[roomId]) {
-        roomUsers[roomId] = [];
-      }
+      if (!roomUsers[roomId]) roomUsers[roomId] = [];
       roomUsers[roomId].push({ id: socket.id, name: username });
 
       io.in(roomId).emit('user-joined', { id: socket.id, name: username, users: roomUsers[roomId] });
@@ -184,22 +183,22 @@ async function startServer() {
       startAutoPing();
     });
 
-    socket.on('send-play', ({ roomId, currentTime }) => {
+    socket.on('send-play', async ({ roomId, currentTime }) => {
       if (roomStates[roomId]) {
         roomStates[roomId].isPlaying = true;
         roomStates[roomId].currentTime = currentTime;
-        saveRoomStates();
+        await saveRoomStates();
       }
       socket.to(roomId).emit('receive-play', currentTime);
     });
 
-    socket.on('send-pause', ({ roomId, currentTime }) => {
+    socket.on('send-pause', async ({ roomId, currentTime }) => {
       if (roomStates[roomId]) {
         roomStates[roomId].isPlaying = false;
         roomStates[roomId].currentTime = currentTime;
-        saveRoomStates();
         const user = (roomUsers[roomId] || []).find(u => u.id === socket.id);
         lastPausedBy[roomId] = user ? user.name : 'Desconocido';
+        await saveRoomStates();
         io.in(roomId).emit('chat-message', {
           username: 'Sistema',
           message: `Pausado por ${user ? user.name : 'Desconocido'}`,
@@ -210,32 +209,27 @@ async function startServer() {
       socket.to(roomId).emit('receive-pause', currentTime);
     });
 
-    socket.on('send-seek', ({ roomId, time }) => {
+    socket.on('send-seek', async ({ roomId, time }) => {
       if (roomStates[roomId]) {
         roomStates[roomId].currentTime = time;
-        saveRoomStates();
+        await saveRoomStates();
       }
       socket.to(roomId).emit('receive-seek', time);
     });
 
-    socket.on('admin-update-room', async ({ roomId, newName, newMovie, newUrl, adminPassword }) => {
+    socket.on('admin-update-room', async ({ roomId, newMovie, newUrl, adminPassword }) => {
       if (adminPassword !== ADMIN_SECRET) {
-        console.log(`Intento fallido de admin para actualizar la sala ${roomId}`);
-        socket.emit('admin-error', 'Contraseña de administrador incorrecta.');
-        return;
+        return socket.emit('admin-error', 'Contraseña de administrador incorrecta.');
       }
 
       if (!PREDEFINED_ROOMS[roomId]) {
-        socket.emit('admin-error', 'La sala que intentas actualizar no existe.');
-        return;
+        return socket.emit('admin-error', 'La sala que intentas actualizar no existe.');
       }
 
       console.log(`Admin actualizando la sala ${roomId}`);
       const room = PREDEFINED_ROOMS[roomId];
       const roomState = roomStates[roomId];
       
-      // El nombre de la sala ya no se puede editar.
-      // if (typeof newName === 'string') room.name = newName;
       if (typeof newMovie === 'string') room.movie = newMovie;
       if (typeof newUrl === 'string') room.videoUrl = newUrl;
       
@@ -243,7 +237,7 @@ async function startServer() {
         roomState.videoUrl = newUrl;
         roomState.currentTime = 0;
         roomState.isPlaying = false;
-        saveRoomStates();
+        await saveRoomStates();
         io.in(roomId).emit('receive-video-change', newUrl);
         io.in(roomId).emit('chat-message', {
           username: 'Sistema',
@@ -261,8 +255,7 @@ async function startServer() {
 
     socket.on('admin-request-room-status', (adminPassword) => {
       if (adminPassword !== ADMIN_SECRET) {
-        socket.emit('admin-room-status', { error: 'Contraseña de administrador incorrecta.' });
-        return;
+        return socket.emit('admin-room-status', { error: 'Contraseña de administrador incorrecta.' });
       }
       const status = {};
       for (const roomId in PREDEFINED_ROOMS) {
@@ -283,14 +276,14 @@ async function startServer() {
       io.in(roomId).emit('chat-message', chatMessage);
     });
     
-    socket.on('ping', () => { /* Mantiene el servidor despierto */ });
+    socket.on('ping', () => {});
 
-    socket.on('disconnect', () => {
-      console.log(`Usuario Desconectado: ${socket.id}`);
+    socket.on('disconnect', async () => {
       for (const roomId in roomUsers) {
         const userIndex = roomUsers[roomId].findIndex(user => user.id === socket.id);
         if (userIndex !== -1) {
           const [disconnectedUser] = roomUsers[roomId].splice(userIndex, 1);
+          console.log(`Usuario ${disconnectedUser.name} desconectado de la sala ${roomId}`);
           io.in(roomId).emit('user-left', { id: disconnectedUser.id, name: disconnectedUser.name, users: roomUsers[roomId] });
           io.in(roomId).emit('chat-message', {
             username: 'Sistema',
@@ -300,17 +293,11 @@ async function startServer() {
           });
           
           if (roomUsers[roomId].length === 0) {
-            console.log(`Sala ${roomId} vacía. Pausando video y limpiando lista de usuarios.`);
+            console.log(`Sala ${roomId} vacía. Pausando video.`);
             if(roomStates[roomId]) {
               roomStates[roomId].isPlaying = false;
-              saveRoomStates();
               lastPausedBy[roomId] = 'Backend (sala vacía)';
-              io.in(roomId).emit('chat-message', {
-                username: 'Sistema',
-                message: 'Pausado por el sistema (sala vacía)',
-                timestamp: Date.now(),
-                isSystem: true
-              });
+              await saveRoomStates();
             }
             delete roomUsers[roomId];
           }
