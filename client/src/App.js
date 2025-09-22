@@ -282,12 +282,10 @@ const AppStyles = () => (
   `}</style>
 );
 
-// **NUEVO**: Panel de Admin como un componente separado para evitar re-renderizados indeseados
-// Sidebar de administración con tabs
+// --- Componente de la Sidebar de Administración ---
 const AdminSidebar = ({
   predefinedRooms,
   adminSelectedRoomId, setAdminSelectedRoomId,
-  adminNewName, setAdminNewName,
   adminNewMovie, setAdminNewMovie,
   adminNewUrl, setAdminNewUrl,
   adminPassword, setAdminPassword,
@@ -295,14 +293,22 @@ const AdminSidebar = ({
   handleAdminUpdate,
   setIsAdminPanelOpen
 }) => {
-  const [activeTab, setActiveTab] = useState('estadisticas');
-  // Estado para estadísticas
+  const [activeTab, setActiveTab] = useState('salas');
   const [roomStatus, setRoomStatus] = useState({});
   const [statusError, setStatusError] = useState('');
   const [backendStatus, setBackendStatus] = useState('Desconocido');
   const [statsPassword, setStatsPassword] = useState('');
   const [statsPasswordOk, setStatsPasswordOk] = useState(false);
   const intervalRef = useRef(null);
+
+  // Efecto para auto-rellenar los campos cuando se cambia de sala
+  useEffect(() => {
+    if (predefinedRooms && predefinedRooms[adminSelectedRoomId]) {
+      const room = predefinedRooms[adminSelectedRoomId];
+      setAdminNewMovie(room.movie || '');
+      setAdminNewUrl(room.videoUrl || '');
+    }
+  }, [adminSelectedRoomId, predefinedRooms, setAdminNewMovie, setAdminNewUrl]);
 
   useEffect(() => {
     if (activeTab !== 'estadisticas' || !statsPasswordOk) return;
@@ -367,18 +373,16 @@ const AdminSidebar = ({
             )
           ) : (
             <div className="modal-inputs">
-              <label>Número de sala:</label>
+              <label>Sala:</label>
               <select value={adminSelectedRoomId} onChange={e => setAdminSelectedRoomId(e.target.value)}>
-                {Object.keys(predefinedRooms).map(roomId => (
-                  <option key={roomId} value={roomId}>{roomId}</option>
+                {Object.entries(predefinedRooms).map(([roomId, room]) => (
+                  <option key={roomId} value={roomId}>{room.name}</option>
                 ))}
               </select>
-              <label>Nombre de la sala:</label>
-              <input type="text" className="generic-input" value={adminNewName} onChange={e => setAdminNewName(e.target.value)} />
               <label>Nombre de la película:</label>
-              <input type="text" className="generic-input" value={adminNewMovie} onChange={e => setAdminNewMovie(e.target.value)} />
+              <input type="text" className="generic-input" placeholder="(Vacío)" value={adminNewMovie} onChange={e => setAdminNewMovie(e.target.value)} />
               <label>Link de la película:</label>
-              <input type="text" className="generic-input" value={adminNewUrl} onChange={e => setAdminNewUrl(e.target.value)} />
+              <input type="text" className="generic-input" placeholder="(Vacío)" value={adminNewUrl} onChange={e => setAdminNewUrl(e.target.value)} />
               <label>Contraseña de admin:</label>
               <input type="password" className="generic-input" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} />
               <p className="admin-error-message">{adminError}</p>
@@ -412,13 +416,10 @@ function App() {
   // Estados para el panel de admin
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
   const [adminSelectedRoomId, setAdminSelectedRoomId] = useState('sala-1');
-  const [adminNewName, setAdminNewName] = useState('');
   const [adminNewMovie, setAdminNewMovie] = useState('');
   const [adminNewUrl, setAdminNewUrl] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [adminError, setAdminError] = useState('');
-  
-  const [isStatsPanelOpen, setIsStatsPanelOpen] = useState(false);
   
   const playerRef = useRef(null);
   const isSocketAction = useRef(false);
@@ -438,11 +439,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // Escuchar la lista de salas inicial del servidor
     socket.on('initial-lobby-data', (rooms) => setPredefinedRooms(rooms));
-    // Escuchar actualizaciones del lobby
     socket.on('update-lobby-data', (rooms) => setPredefinedRooms(rooms));
-    // Escuchar errores de admin
     socket.on('admin-error', (errorMessage) => setAdminError(errorMessage));
     
     return () => {
@@ -506,20 +504,17 @@ function App() {
   const formatTimestamp = (timestamp) => new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   
   const handleAdminUpdate = () => {
-    setAdminError(''); // Limpiar errores previos
+    setAdminError('');
     if (!adminPassword) {
         setAdminError('La contraseña es requerida.');
         return;
     }
     socket.emit('admin-update-room', {
         roomId: adminSelectedRoomId,
-        newName: adminNewName,
         newMovie: adminNewMovie,
         newUrl: adminNewUrl,
         adminPassword: adminPassword,
     });
-    // Considerar cerrar el modal o mostrar un mensaje de éxito
-    // setIsAdminPanelOpen(false); // Podrías descomentar esto para cerrar el panel al guardar
   };
 
   // --- Renderizado Condicional ---
@@ -531,8 +526,6 @@ function App() {
             predefinedRooms={predefinedRooms}
             adminSelectedRoomId={adminSelectedRoomId}
             setAdminSelectedRoomId={setAdminSelectedRoomId}
-            adminNewName={adminNewName}
-            setAdminNewName={setAdminNewName}
             adminNewMovie={adminNewMovie}
             setAdminNewMovie={setAdminNewMovie}
             adminNewUrl={adminNewUrl}
@@ -557,7 +550,7 @@ function App() {
                 {Object.entries(predefinedRooms).map(([id, room]) => (
                     <div key={id} className="room-card" onClick={() => setSelectedRoom({id, ...room})}>
                         <h3>{room.name}</h3>
-                        <p>{room.movie}</p>
+                        <p>{room.movie || '(Vacía)'}</p>
                     </div>
                 ))}
             </div>
@@ -640,4 +633,3 @@ function App() {
 }
 
 export default App;
-

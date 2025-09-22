@@ -4,6 +4,19 @@ const http = require('http');
 const { Server } = require("socket.io");
 const fs = require('fs');
 const path = require('path');
+const admin = require('firebase-admin');
+
+// --- INICIALIZACIÓN DE FIREBASE ---
+const serviceAccount = require('./serviceAccountKey.json');
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  databaseURL: "https://peliculas-153f1-default-rtdb.firebaseio.com"
+});
+
+const db = admin.database();
+const roomsRef = db.ref('rooms');
+// --- FIN DE INICIALIZACIÓN DE FIREBASE ---
 
 // Creamos el servidor
 const app = express();
@@ -20,23 +33,18 @@ const io = new Server(server, {
   }
 });
 
-const ROOMS_FILE = path.join(__dirname, 'rooms.json');
-
-// Salas predefinidas por defecto
+// Salas predefinidas por defecto (para la primera vez que se usa la DB)
 const DEFAULT_ROOMS = {
   'sala-1': { 
     name: 'Sala 1', 
     movie: 'Manos de Tijera',
     videoUrl: 'https://pub-cd2cf2772f534ea0b1f45983378f56d8.r2.dev/manosdetijera.mp4' 
   },
-  'sala-2': { 
-    name: 'Sala 2', 
-    movie: 'Big Buck Bunny',
-    videoUrl: 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4' 
-  },
-  'sala-3': { name: 'Sala 3', movie: '(Próximamente)', videoUrl: '' },
-  'sala-4': { name: 'Sala 4', movie: '(Próximamente)', videoUrl: '' },
-  'sala-5': { name: 'Sala 5', movie: '(Próximamente)', videoUrl: '' },
+  'sala-2': { name: 'Sala 2', movie: '', videoUrl: '' },
+  'sala-3': { name: 'Sala 3', movie: '', videoUrl: '' },
+  'sala-4': { name: 'Sala 4', movie: '', videoUrl: '' },
+  'sala-5': { name: 'Sala 5', movie: '', videoUrl: '' },
+  'sala-6': { name: 'Sala 6', movie: '', videoUrl: '' },
 };
 
 // Almacena el estado actual del video por sala (persistente mientras el servidor viva)
@@ -71,45 +79,45 @@ function saveRoomStates() {
   }
 }
 
-// Cargar salas desde archivo o usar las predefinidas
-function loadRooms() {
-  if (fs.existsSync(ROOMS_FILE)) {
-    try {
-      const data = fs.readFileSync(ROOMS_FILE, 'utf8');
-      return JSON.parse(data);
-    } catch (e) {
-      console.error('Error al leer rooms.json:', e);
-      return { ...DEFAULT_ROOMS };
+// --- NUEVAS FUNCIONES DE FIREBASE ---
+async function loadRooms() {
+  try {
+    const snapshot = await roomsRef.once('value');
+    if (snapshot.exists()) {
+      console.log('Salas restauradas desde Firebase.');
+      return snapshot.val();
+    } else {
+      console.log('No hay salas en Firebase. Inicializando con valores por defecto.');
+      await roomsRef.set(DEFAULT_ROOMS);
+      return DEFAULT_ROOMS;
     }
-  } else {
+  } catch (e) {
+    console.error('Error al cargar salas desde Firebase, usando valores por defecto:', e);
     return { ...DEFAULT_ROOMS };
   }
 }
 
-// Guardar salas en archivo
-function saveRooms() {
+async function saveRooms() {
   try {
-    fs.writeFileSync(ROOMS_FILE, JSON.stringify(PREDEFINED_ROOMS, null, 2), 'utf8');
+    await roomsRef.set(PREDEFINED_ROOMS);
   } catch (e) {
-    console.error('Error al guardar rooms.json:', e);
+    console.error('Error al guardar salas en Firebase:', e);
   }
 }
+// --- FIN DE NUEVAS FUNCIONES ---
 
-// Usar las salas cargadas
-let PREDEFINED_ROOMS = loadRooms();
+// Variable para almacenar las salas cargadas
+let PREDEFINED_ROOMS;
 
-// Llamar al cargar el servidor
-loadRoomStates();
+const PORT = process.env.PORT || 3001;
 
 // --- Auto-ping para evitar que el server se duerma ---
 let autoPingInterval = null;
 function startAutoPing() {
   if (!autoPingInterval) {
     autoPingInterval = setInterval(() => {
-      // Solo hacer ping si hay usuarios conectados
       const totalUsers = Object.values(roomUsers).reduce((acc, arr) => acc + arr.length, 0);
       if (totalUsers > 0) {
-        // Hacer un request HTTP a sí mismo
         http.get('http://localhost:' + PORT + '/ping', () => {});
       }
     }, 5 * 60 * 1000); // cada 5 minutos
@@ -127,199 +135,199 @@ function stopAutoPing() {
 // Endpoint para auto-ping
 app.get('/ping', (req, res) => res.send('pong'));
 
-// Escuchamos cuando un cliente se conecta
-io.on('connection', (socket) => {
-  console.log(`Usuario Conectado: ${socket.id}`);
+
+// --- FUNCIÓN PRINCIPAL DE ARRANQUE ---
+async function startServer() {
   
-  // **NUEVO**: Al conectarse un usuario, le enviamos la lista de salas actualizada.
-  socket.emit('initial-lobby-data', PREDEFINED_ROOMS);
+  PREDEFINED_ROOMS = await loadRooms();
+  loadRoomStates();
 
-  socket.on('join-room', ({ roomId, username }) => {
-    if (!PREDEFINED_ROOMS[roomId]) {
-      console.log(`Intento de unirse a sala inexistente: ${roomId}`);
-      return; 
-    }
+  io.on('connection', (socket) => {
+    console.log(`Usuario Conectado: ${socket.id}`);
     
-    socket.join(roomId);
-    console.log(`Usuario ${username} (${socket.id}) se unió a la sala: ${roomId}`);
+    socket.emit('initial-lobby-data', PREDEFINED_ROOMS);
 
-    if (!roomUsers[roomId]) {
-      roomUsers[roomId] = [];
-    }
-    roomUsers[roomId].push({ id: socket.id, name: username });
+    socket.on('join-room', ({ roomId, username }) => {
+      if (!PREDEFINED_ROOMS[roomId]) {
+        console.log(`Intento de unirse a sala inexistente: ${roomId}`);
+        return; 
+      }
+      
+      socket.join(roomId);
+      console.log(`Usuario ${username} (${socket.id}) se unió a la sala: ${roomId}`);
 
-    io.in(roomId).emit('user-joined', { id: socket.id, name: username, users: roomUsers[roomId] });
+      if (!roomUsers[roomId]) {
+        roomUsers[roomId] = [];
+      }
+      roomUsers[roomId].push({ id: socket.id, name: username });
 
-    if (!roomStates[roomId]) {
-      console.log(`Inicializando estado para la sala ${roomId}`);
-      roomStates[roomId] = {
-        videoUrl: PREDEFINED_ROOMS[roomId].videoUrl,
-        currentTime: 0,
-        isPlaying: false
-      };
-    }
-    
-    socket.emit('receive-video-state', roomStates[roomId]);
+      io.in(roomId).emit('user-joined', { id: socket.id, name: username, users: roomUsers[roomId] });
 
-    io.in(roomId).emit('chat-message', {
-      username: 'Sistema',
-      message: `${username} se ha unido a la sala.`,
-      timestamp: Date.now(),
-      isSystem: true
+      if (!roomStates[roomId]) {
+        console.log(`Inicializando estado para la sala ${roomId}`);
+        roomStates[roomId] = {
+          videoUrl: PREDEFINED_ROOMS[roomId].videoUrl,
+          currentTime: 0,
+          isPlaying: false
+        };
+      }
+      
+      socket.emit('receive-video-state', roomStates[roomId]);
+
+      io.in(roomId).emit('chat-message', {
+        username: 'Sistema',
+        message: `${username} se ha unido a la sala.`,
+        timestamp: Date.now(),
+        isSystem: true
+      });
+
+      startAutoPing();
     });
 
-    // Iniciar auto-ping si hay usuarios
-    startAutoPing();
-  });
+    socket.on('send-play', ({ roomId, currentTime }) => {
+      if (roomStates[roomId]) {
+        roomStates[roomId].isPlaying = true;
+        roomStates[roomId].currentTime = currentTime;
+        saveRoomStates();
+      }
+      socket.to(roomId).emit('receive-play', currentTime);
+    });
 
-  socket.on('send-play', ({ roomId, currentTime }) => {
-    if (roomStates[roomId]) {
-      roomStates[roomId].isPlaying = true;
-      roomStates[roomId].currentTime = currentTime;
-      saveRoomStates();
-    }
-    socket.to(roomId).emit('receive-play', currentTime);
-  });
-
-  socket.on('send-pause', ({ roomId, currentTime }) => {
-    if (roomStates[roomId]) {
-      roomStates[roomId].isPlaying = false;
-      roomStates[roomId].currentTime = currentTime;
-      saveRoomStates();
-      // Guardar quién pausó
-      const user = (roomUsers[roomId] || []).find(u => u.id === socket.id);
-      lastPausedBy[roomId] = user ? user.name : 'Desconocido';
-      // Enviar mensaje de chat personalizado
-      io.in(roomId).emit('chat-message', {
-        username: 'Sistema',
-        message: `Pausado por ${user ? user.name : 'Desconocido'}`,
-        timestamp: Date.now(),
-        isSystem: true
-      });
-    }
-    socket.to(roomId).emit('receive-pause', currentTime);
-  });
-
-  socket.on('send-seek', ({ roomId, time }) => {
-    if (roomStates[roomId]) {
-      roomStates[roomId].currentTime = time;
-      saveRoomStates();
-    }
-    socket.to(roomId).emit('receive-seek', time);
-  });
-
-  // **NUEVO**: Evento para que un admin actualice una sala
-  socket.on('admin-update-room', ({ roomId, newName, newMovie, newUrl, adminPassword }) => {
-    // 1. Verificar contraseña
-    if (adminPassword !== ADMIN_SECRET) {
-      console.log(`Intento fallido de admin para actualizar la sala ${roomId}`);
-      socket.emit('admin-error', 'Contraseña de administrador incorrecta.');
-      return;
-    }
-
-    // 2. Validar que la sala exista
-    if (!PREDEFINED_ROOMS[roomId]) {
-      socket.emit('admin-error', 'La sala que intentas actualizar no existe.');
-      return;
-    }
-
-    console.log(`Admin actualizando la sala ${roomId}`);
-    const room = PREDEFINED_ROOMS[roomId];
-    const roomState = roomStates[roomId];
-    // 3. Actualizar datos en memoria
-    if (typeof newName === 'string') room.name = newName;
-    if (typeof newMovie === 'string') room.movie = newMovie;
-    if (typeof newUrl === 'string') room.videoUrl = newUrl;
-    // Si la URL del video cambia, reseteamos el estado de la sala
-    if (roomState && newUrl && roomState.videoUrl !== newUrl) {
-      roomState.videoUrl = newUrl;
-      roomState.currentTime = 0;
-      roomState.isPlaying = false;
-      saveRoomStates();
-      io.in(roomId).emit('receive-video-change', newUrl);
-      io.in(roomId).emit('chat-message', {
-        username: 'Sistema',
-        message: `Un administrador ha cambiado la película de la sala.`,
-        timestamp: Date.now(),
-        isSystem: true
-      });
-    }
-    saveRooms(); // Guardar cambios en archivo
-    io.emit('update-lobby-data', PREDEFINED_ROOMS);
-    console.log(`Datos del lobby actualizados y enviados a todos los clientes.`);
-  });
-
-  // Evento para que el admin solicite el estado de todas las salas
-  socket.on('admin-request-room-status', (adminPassword) => {
-    if (adminPassword !== ADMIN_SECRET) {
-      socket.emit('admin-room-status', { error: 'Contraseña de administrador incorrecta.' });
-      return;
-    }
-    // Construir el estado de todas las salas
-    const status = {};
-    for (const roomId in PREDEFINED_ROOMS) {
-      status[roomId] = {
-        name: PREDEFINED_ROOMS[roomId].name,
-        movie: PREDEFINED_ROOMS[roomId].movie,
-        videoUrl: PREDEFINED_ROOMS[roomId].videoUrl,
-        users: roomUsers[roomId] || [],
-        videoState: roomStates[roomId] || { currentTime: 0, isPlaying: false, videoUrl: PREDEFINED_ROOMS[roomId].videoUrl },
-        lastPausedBy: lastPausedBy[roomId] || null
-      };
-    }
-    socket.emit('admin-room-status', status);
-  });
-
-  socket.on('send-chat-message', ({ roomId, username, message }) => {
-    const chatMessage = { username, message, timestamp: Date.now() };
-    io.in(roomId).emit('chat-message', chatMessage);
-  });
-  
-  socket.on('ping', () => { /* Mantiene el servidor despierto */ });
-
-  socket.on('disconnect', () => {
-    console.log(`Usuario Desconectado: ${socket.id}`);
-    for (const roomId in roomUsers) {
-      const userIndex = roomUsers[roomId].findIndex(user => user.id === socket.id);
-      if (userIndex !== -1) {
-        const [disconnectedUser] = roomUsers[roomId].splice(userIndex, 1);
-        io.in(roomId).emit('user-left', { id: disconnectedUser.id, name: disconnectedUser.name, users: roomUsers[roomId] });
+    socket.on('send-pause', ({ roomId, currentTime }) => {
+      if (roomStates[roomId]) {
+        roomStates[roomId].isPlaying = false;
+        roomStates[roomId].currentTime = currentTime;
+        saveRoomStates();
+        const user = (roomUsers[roomId] || []).find(u => u.id === socket.id);
+        lastPausedBy[roomId] = user ? user.name : 'Desconocido';
         io.in(roomId).emit('chat-message', {
           username: 'Sistema',
-          message: `${disconnectedUser.name} ha abandonado la sala.`,
+          message: `Pausado por ${user ? user.name : 'Desconocido'}`,
           timestamp: Date.now(),
           isSystem: true
         });
-        
-        if (roomUsers[roomId].length === 0) {
-          console.log(`Sala ${roomId} vacía. Pausando video y limpiando lista de usuarios.`);
-          if(roomStates[roomId]) {
-            roomStates[roomId].isPlaying = false;
-            saveRoomStates();
-            lastPausedBy[roomId] = 'Backend (sala vacía)';
-            // Mensaje de chat por pausa del sistema
-            io.in(roomId).emit('chat-message', {
-              username: 'Sistema',
-              message: 'Pausado por el sistema (sala vacía)',
-              timestamp: Date.now(),
-              isSystem: true
-            });
-          }
-          delete roomUsers[roomId];
-        }
-        // Si ya no hay usuarios en ninguna sala, detener auto-ping
-        const totalUsers = Object.values(roomUsers).reduce((acc, arr) => acc + arr.length, 0);
-        if (totalUsers === 0) {
-          stopAutoPing();
-        }
-        break;
       }
-    }
+      socket.to(roomId).emit('receive-pause', currentTime);
+    });
+
+    socket.on('send-seek', ({ roomId, time }) => {
+      if (roomStates[roomId]) {
+        roomStates[roomId].currentTime = time;
+        saveRoomStates();
+      }
+      socket.to(roomId).emit('receive-seek', time);
+    });
+
+    socket.on('admin-update-room', async ({ roomId, newName, newMovie, newUrl, adminPassword }) => {
+      if (adminPassword !== ADMIN_SECRET) {
+        console.log(`Intento fallido de admin para actualizar la sala ${roomId}`);
+        socket.emit('admin-error', 'Contraseña de administrador incorrecta.');
+        return;
+      }
+
+      if (!PREDEFINED_ROOMS[roomId]) {
+        socket.emit('admin-error', 'La sala que intentas actualizar no existe.');
+        return;
+      }
+
+      console.log(`Admin actualizando la sala ${roomId}`);
+      const room = PREDEFINED_ROOMS[roomId];
+      const roomState = roomStates[roomId];
+      
+      // El nombre de la sala ya no se puede editar.
+      // if (typeof newName === 'string') room.name = newName;
+      if (typeof newMovie === 'string') room.movie = newMovie;
+      if (typeof newUrl === 'string') room.videoUrl = newUrl;
+      
+      if (roomState && newUrl && roomState.videoUrl !== newUrl) {
+        roomState.videoUrl = newUrl;
+        roomState.currentTime = 0;
+        roomState.isPlaying = false;
+        saveRoomStates();
+        io.in(roomId).emit('receive-video-change', newUrl);
+        io.in(roomId).emit('chat-message', {
+          username: 'Sistema',
+          message: `Un administrador ha cambiado la película de la sala.`,
+          timestamp: Date.now(),
+          isSystem: true
+        });
+      }
+      
+      await saveRooms();
+      
+      io.emit('update-lobby-data', PREDEFINED_ROOMS);
+      console.log(`Datos del lobby actualizados y enviados a todos los clientes.`);
+    });
+
+    socket.on('admin-request-room-status', (adminPassword) => {
+      if (adminPassword !== ADMIN_SECRET) {
+        socket.emit('admin-room-status', { error: 'Contraseña de administrador incorrecta.' });
+        return;
+      }
+      const status = {};
+      for (const roomId in PREDEFINED_ROOMS) {
+        status[roomId] = {
+          name: PREDEFINED_ROOMS[roomId].name,
+          movie: PREDEFINED_ROOMS[roomId].movie,
+          videoUrl: PREDEFINED_ROOMS[roomId].videoUrl,
+          users: roomUsers[roomId] || [],
+          videoState: roomStates[roomId] || { currentTime: 0, isPlaying: false, videoUrl: PREDEFINED_ROOMS[roomId].videoUrl },
+          lastPausedBy: lastPausedBy[roomId] || null
+        };
+      }
+      socket.emit('admin-room-status', status);
+    });
+
+    socket.on('send-chat-message', ({ roomId, username, message }) => {
+      const chatMessage = { username, message, timestamp: Date.now() };
+      io.in(roomId).emit('chat-message', chatMessage);
+    });
+    
+    socket.on('ping', () => { /* Mantiene el servidor despierto */ });
+
+    socket.on('disconnect', () => {
+      console.log(`Usuario Desconectado: ${socket.id}`);
+      for (const roomId in roomUsers) {
+        const userIndex = roomUsers[roomId].findIndex(user => user.id === socket.id);
+        if (userIndex !== -1) {
+          const [disconnectedUser] = roomUsers[roomId].splice(userIndex, 1);
+          io.in(roomId).emit('user-left', { id: disconnectedUser.id, name: disconnectedUser.name, users: roomUsers[roomId] });
+          io.in(roomId).emit('chat-message', {
+            username: 'Sistema',
+            message: `${disconnectedUser.name} ha abandonado la sala.`,
+            timestamp: Date.now(),
+            isSystem: true
+          });
+          
+          if (roomUsers[roomId].length === 0) {
+            console.log(`Sala ${roomId} vacía. Pausando video y limpiando lista de usuarios.`);
+            if(roomStates[roomId]) {
+              roomStates[roomId].isPlaying = false;
+              saveRoomStates();
+              lastPausedBy[roomId] = 'Backend (sala vacía)';
+              io.in(roomId).emit('chat-message', {
+                username: 'Sistema',
+                message: 'Pausado por el sistema (sala vacía)',
+                timestamp: Date.now(),
+                isSystem: true
+              });
+            }
+            delete roomUsers[roomId];
+          }
+          
+          const totalUsers = Object.values(roomUsers).reduce((acc, arr) => acc + arr.length, 0);
+          if (totalUsers === 0) {
+            stopAutoPing();
+          }
+          break;
+        }
+      }
+    });
   });
-});
 
-const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-  console.log(`Servidor de Cine Virtual escuchando en el puerto ${PORT}`);
-});
+  server.listen(PORT, () => {
+    console.log(`Servidor de Cine Virtual escuchando en el puerto ${PORT}`);
+  });
+}
 
+startServer();
