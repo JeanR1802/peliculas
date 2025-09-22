@@ -164,6 +164,26 @@ const AdminPanel = ({
         }
     }, [adminSelectedRoomId, predefinedRooms, setAdminNewName, setAdminNewMovie, setAdminNewUrl]);
 
+    const [roomStatus, setRoomStatus] = useState({});
+    const [statusError, setStatusError] = useState('');
+    const intervalRef = useRef(null);
+
+    useEffect(() => {
+        function fetchStatus() {
+            window.socket.emit('admin-request-room-status', adminPassword);
+        }
+        fetchStatus();
+        intervalRef.current = setInterval(fetchStatus, 5000);
+        window.socket.on('admin-room-status', (data) => {
+            if (data.error) setStatusError(data.error);
+            else { setRoomStatus(data); setStatusError(''); }
+        });
+        return () => {
+            clearInterval(intervalRef.current);
+            window.socket.off('admin-room-status');
+        };
+    }, [adminPassword]);
+
     return (
         <div className="modal-overlay">
             <div className="modal-content">
@@ -188,6 +208,21 @@ const AdminPanel = ({
                 <div style={{display: 'flex', gap: '10px', justifyContent: 'center'}}>
                     <button onClick={handleAdminUpdate}>Guardar Cambios</button>
                     <button onClick={() => setIsAdminPanelOpen(false)} style={{backgroundColor: 'var(--secondary-text-color)'}}>Cancelar</button>
+                </div>
+                <hr style={{margin: '20px 0'}} />
+                <h3>Estado de Salas en Tiempo Real</h3>
+                {statusError && <div style={{color:'red'}}>{statusError}</div>}
+                <div style={{maxHeight: 300, overflowY: 'auto'}}>
+                  {Object.entries(roomStatus).map(([id, status]) => (
+                    <div key={id} style={{border: '1px solid #444', borderRadius: 8, margin: '10px 0', padding: 10}}>
+                      <b>{status.name}</b> <span style={{color:'#888'}}>({id})</span><br/>
+                      Película: <b>{status.movie}</b><br/>
+                      Usuarios conectados: {status.users.length > 0 ? status.users.map(u => u.name).join(', ') : 'Ninguno'}<br/>
+                      Tiempo actual: {status.videoState.currentTime ? status.videoState.currentTime.toFixed(1) + 's' : '0s'}<br/>
+                      Estado: {status.videoState.isPlaying ? 'Reproduciendo' : 'Pausado'}<br/>
+                      Último en pausar: {status.lastPausedBy || 'Nadie'}
+                    </div>
+                  ))}
                 </div>
             </div>
         </div>
