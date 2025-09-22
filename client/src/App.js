@@ -273,6 +273,31 @@ const AppStyles = () => (
       flex: 1;
       overflow-y: auto;
     }
+    .loading-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--bg-color);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 2000;
+      transition: opacity 0.5s ease;
+    }
+    .loading-spinner {
+      border: 4px solid var(--border-color);
+      border-top: 4px solid var(--primary-accent);
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      margin-bottom: 20px;
+    }
+    .loading-text {
+      color: var(--secondary-text-color);
+      font-size: 1.2rem;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
     @media (max-width: 600px) {
       .admin-sidebar { width: 100vw; max-width: 100vw; }
       .admin-sidebar-header { padding: 12px 10px 0 10px; }
@@ -280,6 +305,14 @@ const AppStyles = () => (
       .admin-tab-content { padding: 10px; }
     }
   `}</style>
+);
+
+// --- Componente de la Pantalla de Carga ---
+const LoadingScreen = () => (
+  <div className="loading-overlay">
+    <div className="loading-spinner"></div>
+    <p className="loading-text">Despertando el servidor, por favor espera...</p>
+  </div>
 );
 
 // --- Componente de la Sidebar de Administración ---
@@ -400,6 +433,7 @@ const AdminSidebar = ({
 
 // Componente principal
 function App() {
+  const [isLoading, setIsLoading] = useState(true);
   const [predefinedRooms, setPredefinedRooms] = useState({});
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [username, setUsername] = useState('');
@@ -439,12 +473,17 @@ function App() {
   }, []);
 
   useEffect(() => {
-    socket.on('initial-lobby-data', (rooms) => setPredefinedRooms(rooms));
+    const handleInitialData = (rooms) => {
+      setPredefinedRooms(rooms);
+      setIsLoading(false);
+    };
+
+    socket.on('initial-lobby-data', handleInitialData);
     socket.on('update-lobby-data', (rooms) => setPredefinedRooms(rooms));
     socket.on('admin-error', (errorMessage) => setAdminError(errorMessage));
     
     return () => {
-      socket.off('initial-lobby-data');
+      socket.off('initial-lobby-data', handleInitialData);
       socket.off('update-lobby-data');
       socket.off('admin-error');
     };
@@ -518,6 +557,15 @@ function App() {
   };
 
   // --- Renderizado Condicional ---
+  if (isLoading) {
+    return (
+      <>
+        <AppStyles />
+        <LoadingScreen />
+      </>
+    );
+  }
+
   if (!selectedRoom) {
     return (
       <>
