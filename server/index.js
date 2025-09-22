@@ -226,30 +226,25 @@ io.on('connection', (socket) => {
     console.log(`Admin actualizando la sala ${roomId}`);
     const room = PREDEFINED_ROOMS[roomId];
     const roomState = roomStates[roomId];
-    
     // 3. Actualizar datos en memoria
-    if (newName) room.name = newName;
-    if (newMovie) room.movie = newMovie;
-    if (newUrl && room.videoUrl !== newUrl) {
-      room.videoUrl = newUrl;
-      if (roomState) {
-        roomState.videoUrl = newUrl;
-        roomState.currentTime = 0;
-        roomState.isPlaying = false;
-        saveRoomStates();
-        // Notificar a los que están DENTRO de la sala sobre el cambio de video
-        io.in(roomId).emit('receive-video-change', newUrl);
-        io.in(roomId).emit('chat-message', {
-          username: 'Sistema',
-          message: `Un administrador ha cambiado la película de la sala.`,
-          timestamp: Date.now(),
-          isSystem: true
-        });
-      }
+    if (typeof newName === 'string') room.name = newName;
+    if (typeof newMovie === 'string') room.movie = newMovie;
+    if (typeof newUrl === 'string') room.videoUrl = newUrl;
+    // Si la URL del video cambia, reseteamos el estado de la sala
+    if (roomState && newUrl && roomState.videoUrl !== newUrl) {
+      roomState.videoUrl = newUrl;
+      roomState.currentTime = 0;
+      roomState.isPlaying = false;
+      saveRoomStates();
+      io.in(roomId).emit('receive-video-change', newUrl);
+      io.in(roomId).emit('chat-message', {
+        username: 'Sistema',
+        message: `Un administrador ha cambiado la película de la sala.`,
+        timestamp: Date.now(),
+        isSystem: true
+      });
     }
     saveRooms(); // Guardar cambios en archivo
-
-    // 4. Notificar a TODOS los clientes conectados (incluso los del lobby) sobre los cambios
     io.emit('update-lobby-data', PREDEFINED_ROOMS);
     console.log(`Datos del lobby actualizados y enviados a todos los clientes.`);
   });
