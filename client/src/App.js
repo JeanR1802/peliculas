@@ -454,6 +454,7 @@ function App() {
   const [adminNewUrl, setAdminNewUrl] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [adminError, setAdminError] = useState('');
+  const [backendStatus, setBackendStatus] = useState(''); // <-- AÑADIDO PARA JEAN
   
   const playerRef = useRef(null);
   const isSocketAction = useRef(false);
@@ -486,6 +487,17 @@ function App() {
       socket.off('initial-lobby-data', handleInitialData);
       socket.off('update-lobby-data');
       socket.off('admin-error');
+    };
+  }, []);
+
+  // <-- AÑADIDO PARA JEAN
+  useEffect(() => {
+    const handleStatusPing = (message) => {
+      setBackendStatus(message);
+    };
+    socket.on('backend-status-ping', handleStatusPing);
+    return () => {
+      socket.off('backend-status-ping', handleStatusPing);
     };
   }, []);
 
@@ -635,6 +647,23 @@ function App() {
   return (
     <>
       <AppStyles />
+      {/* AÑADIDO PARA JEAN */}
+      {username.toLowerCase() === 'jean' && (
+        <div style={{
+          position: 'fixed',
+          bottom: '10px',
+          left: '10px',
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          color: '#00FF00',
+          padding: '5px 10px',
+          borderRadius: '5px',
+          fontFamily: 'monospace',
+          fontSize: '14px',
+          zIndex: 1000
+        }}>
+          {backendStatus}
+        </div>
+      )}
       <div className="App" style={{ height: appHeight }}>
         <div className="video-section">
           <div className="header-and-input">
