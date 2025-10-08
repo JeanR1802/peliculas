@@ -462,6 +462,32 @@ function App() {
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
+  // --- Heartbeat para mantener el servidor de Render despierto ---
+  useEffect(() => {
+    const backendUrl = "https://modixia-watch-party-server.onrender.com/ping";
+    
+    const keepAlive = () => {
+      fetch(backendUrl)
+        .then(res => {
+          if (res.ok) {
+            console.log("Ping al servidor exitoso.");
+          } else {
+            console.error("Ping al servidor falló con status:", res.status);
+          }
+        })
+        .catch(err => {
+          console.error("Error en el ping al servidor:", err);
+        });
+    };
+
+    const keepAliveInterval = setInterval(keepAlive, 4 * 60 * 1000); // Ping cada 4 minutos
+
+    // Limpieza al desmontar el componente
+    return () => {
+      clearInterval(keepAliveInterval);
+    };
+  }, []);
+
   useEffect(() => {
     const handleResize = () => setAppHeight(`${window.innerHeight}px`);
     window.addEventListener('resize', handleResize);
